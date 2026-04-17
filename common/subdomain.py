@@ -7,46 +7,86 @@ import numpy as np
 from typing import Dict, List, Tuple
 
 
-def average_zones(modes: np.ndarray, subdomains: Dict[str, List[int]],
-                  n_dof_per_node: int = 6) -> np.ndarray:
+def average_zones(modes_t: np.ndarray, subdomains: Dict[str, List[int]],
+                  n_nodes: int) -> np.ndarray:
     """
-    Reduce mode shapes to one 3-DOF vector per subdomain (translational average).
+    Reduce translational mode matrix to one 3-DOF vector per subdomain.
 
     Args:
-        modes: Full mode matrix (GDof, nModes)
+        modes_t: Translational mode matrix (3·n_nodes, nModes), layout
+                 [Ux_0..Ux_N | Uy_0..Uy_N | Uz_0..Uz_N] — as produced by
+                 extracting t_idx = sort([0::6, 1::6, 2::6]) from the full vector.
         subdomains: zone name → list of node indices (0-based)
-        n_dof_per_node: DOFs per node in the full model
+        n_nodes: total number of nodes in the model
 
     Returns:
-        modes_red: (3·nZones, nModes) reduced modes
+        modes_red: (3·nZones, nModes) averaged vectors
     """
-    raise NotImplementedError
+    zone_names = list(subdomains.keys())
+    n_zones = len(zone_names)
+    n_modes = modes_t.shape[1] if modes_t.ndim == 2 else 1
+    if modes_t.ndim == 1:
+        modes_t = modes_t[:, None]
+
+    modes_red = np.zeros((3 * n_zones, n_modes))
+    for k, name in enumerate(zone_names):
+        nodes = np.asarray(subdomains[name])
+        # In modes_t: Ux block = [0..n_nodes), Uy = [n_nodes..2*n_nodes), Uz = [2*n_nodes..)
+        ux = modes_t[nodes,            :]   # (ns, nModes)
+        uy = modes_t[nodes + n_nodes,  :]
+        uz = modes_t[nodes + 2*n_nodes,:]
+        modes_red[3*k,   :] = ux.mean(axis=0)
+        modes_red[3*k+1, :] = uy.mean(axis=0)
+        modes_red[3*k+2, :] = uz.mean(axis=0)
+
+    return modes_red
 
 
 def average_mode_subdomain(mode: np.ndarray, node_indices: List[int],
                             n_dof_per_node: int = 6) -> np.ndarray:
     """
     Average translational DOFs (Ux, Uy, Uz) over all nodes in a zone for one mode.
+    Expects full 6-DOF-per-node vector.
 
     Returns:
         phi_avg: (3,) averaged vector
     """
-    raise NotImplementedError
+    nodes = np.asarray(node_indices)
+    ux = mode[n_dof_per_node * nodes + 0]
+    uy = mode[n_dof_per_node * nodes + 1]
+    uz = mode[n_dof_per_node * nodes + 2]
+    return np.array([ux.mean(), uy.mean(), uz.mean()])
 
 
-def reduce_mk_by_subdomains(M: np.ndarray, K: np.ndarray,
+def reduce_mk_by_subdomains(M_t: np.ndarray, K_t: np.ndarray,
                              subdomains: Dict[str, List[int]],
-                             n_nodes: int,
-                             n_dof_per_node: int = 6) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+                             n_nodes: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Build reduced mass and stiffness matrices via subdomain Galerkin reduction.
 
-    Constructs transformation T (GDof × nDOF_red) where T(i,j) = 1/ns
-    if node i belongs to zone j, then Mr = Tᵀ M T, Kr = Tᵀ K T.
+    Operates on the translational-only matrices M_t, K_t (3·n_nodes × 3·n_nodes)
+    with layout [Ux_0..Ux_N | Uy_0..Uy_N | Uz_0..Uz_N], matching average_zones.
 
     Returns:
-        Mr: Reduced mass matrix
-        Kr: Reduced stiffness matrix
-        T:  Transformation matrix
+        Mr: (3·nZones, 3·nZones) reduced mass matrix
+        Kr: (3·nZones, 3·nZones) reduced stiffness matrix
+        T:  (3·n_nodes, 3·nZones) transformation matrix
     """
-    raise NotImplementedError
+    zone_names = list(subdomains.keys())
+    n_zones   = len(zone_names)
+    n_dof_full = 3 * n_nodes
+    n_dof_red  = 3 * n_zones
+
+    T = np.zeros((n_dof_full, n_dof_red))
+
+    for s, name in enumerate(zone_names):
+        nodes_s = np.asarray(subdomains[name])
+        ns = len(nodes_s)
+        for d in range(3):   # Ux, Uy, Uz blocks
+            red_dof   = s * 3 + d
+            full_dofs = nodes_s + d * n_nodes   # block layout
+            T[full_dofs, red_dof] = 1.0 / ns
+
+    Mr = T.T @ M_t @ T
+    Kr = T.T @ K_t @ T
+    return Mr, Kr, T
