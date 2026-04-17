@@ -22,4 +22,7 @@ def remove_rigid_body_component(modes: np.ndarray, M: np.ndarray,
     Returns:
         modes_proj: Projected modes with rigid-body component removed
     """
-    raise NotImplementedError
+    MR    = M @ R                                    # (GDof, 6)
+    G     = R.T @ MR                                 # (6, 6)  Gram matrix
+    alpha = np.linalg.solve(G, R.T @ (M @ modes))   # (6, nVectors)
+    return modes - R @ alpha
