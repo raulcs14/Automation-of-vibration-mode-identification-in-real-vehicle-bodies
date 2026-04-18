@@ -27,6 +27,20 @@ REF_NAMES = [
     "11 Forced Torsion (F = KU)",
 ]
 
+SHORT_NAMES = [
+    "Heave",
+    "Pitch",
+    "Lat. Bending",
+    "Torsion",
+    "Torsion",
+    "Torsion",
+    "Heave",
+    "Pitch",
+    "Torsion",
+    "Torsion",
+    "Torsion",
+]
+
 
 def run_static_model() -> dict:
     """

@@ -14,7 +14,8 @@ from ansa_model.reader import read_reference_csv
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR   = _REPO_ROOT / "data" / "ansa_model"
 
-REF_NAMES = ["Torsion reference"]
+REF_NAMES   = ["Torsion reference"]
+SHORT_NAMES = ["Torsion"]  # extend when more references are added
 
 
 def run_static_model() -> dict:
