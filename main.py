@@ -334,9 +334,10 @@ def _run_ansa(cfg: dict) -> None:
     from ansa_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
     from ansa_model.static_model   import run_static_model, SHORT_NAMES
 
-    print("\nCargando datos del modelo ANSA...")
-    dyn  = run_modal_analysis()
-    stat = run_static_model()
+    variant = cfg["ansa_variant"]
+    print(f"\nCargando datos del modelo ANSA [{variant}]...")
+    dyn  = run_modal_analysis(variant=variant)
+    stat = run_static_model(variant=variant)
 
     modes = dyn["modes"]
     freq  = dyn["freq"]
@@ -380,6 +381,15 @@ def _interactive_config(model: str) -> dict:
     print("\n" + "─"*52)
     print("  Configuración del análisis MAC")
     print("─"*52)
+
+    # --- ANSA variant ---
+    ansa_variant = "no_mass"
+    if model == "ansa":
+        v_idx = _ask(
+            "Selecciona la variante del modelo ANSA:",
+            ["Sin masas (no_mass)", "Con masas (with_mass)"],
+        )
+        ansa_variant = ["no_mass", "with_mass"][v_idx]
 
     # --- Weightings ---
     w_idx = _ask_multi(
@@ -427,6 +437,8 @@ def _interactive_config(model: str) -> dict:
     print("  Resumen de configuración")
     print("─"*52)
     print(f"  Modelo       : {model}")
+    if model == "ansa":
+        print(f"  Variante     : {ansa_variant}")
     print(f"  Ponderaciones: {weightings}")
     print(f"  Rigid removal: {use_rigid}")
     if model == "simple":
@@ -446,6 +458,7 @@ def _interactive_config(model: str) -> dict:
         top_modes    = top_modes,
         f0_energy    = f0_energy,
         show_plot    = show_plot,
+        ansa_variant = ansa_variant,
     )
 
 

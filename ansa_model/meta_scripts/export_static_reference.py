@@ -4,10 +4,10 @@ Export static reference displacements from a Nastran SOL101 result to CSV.
 Run from inside META post-processor:
     File > Execute Script > export_static_reference.py
 
-Outputs (in data/ansa_model/):
+Outputs (in data/ansa_model/<variant>/):
     ref_trans_results.csv    (nNodes*3, nCases)  translational displacements
     ref_rot_results.csv      (nNodes*3, nCases)  rotational displacements
-    ref_total_results.csv    (nNodes*6, nCases)  full [trans; rot] interleaved
+    ref_total_results.csv    (nNodes*6, nCases)  full [trans+rot] interleaved
 
 DOF layout matches modal_total_results.csv (interleaved G-set order).
 """
@@ -43,6 +43,8 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     model = models.LoadModel('MetaPost', str(INPUT_STATIC_DAT), 'NASTRAN')
+    if model is None:
+        raise RuntimeError(f"Could not load model from:\n  {INPUT_STATIC_DAT}")
 
     trans_cases = results.LoadDeformations(model.id, str(INPUT_STATIC_OP2),
                                            'NASTRAN', 'all',
@@ -52,7 +54,7 @@ def main():
                                            'Displacements,Rotational')
 
     if not trans_cases or not rot_cases:
-        raise ValueError("Could not load displacements from OP2.")
+        raise ValueError(f"Could not load displacements from:\n  {INPUT_STATIC_OP2}")
 
     all_grids = model.get_nodes('all')
     grids_grp = groups.CreateGroupFromNodes(model.id, 'all_grids', all_grids)
@@ -68,9 +70,9 @@ def main():
     np.savetxt(OUTPUT_DIR / 'ref_total_results.csv',  total_mat, delimiter=',')
 
     print(f"Saved to {OUTPUT_DIR}")
-    print(f"  ref_trans_results.csv  : {trans_mat.shape}")
-    print(f"  ref_rot_results.csv    : {rot_mat.shape}")
-    print(f"  ref_total_results.csv  : {total_mat.shape}")
+    print(f"  ref_trans_results.csv : {trans_mat.shape}")
+    print(f"  ref_rot_results.csv   : {rot_mat.shape}")
+    print(f"  ref_total_results.csv : {total_mat.shape}")
 
 
 if __name__ == '__main__':

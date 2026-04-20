@@ -19,10 +19,10 @@ from ansa_model.reader import (read_modes_csv, read_frequencies_csv,
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR   = _REPO_ROOT / "data" / "ansa_model"
+_REPO_ROOT    = Path(__file__).resolve().parents[1]
+_ANSA_ROOT    = _REPO_ROOT / "data" / "ansa_model"
+VARIANTS      = ["no_mass", "with_mass"]
 
-_H5_FILE  = DATA_DIR / "matrices.h5"
 _F06_FILE = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis\dummycar_TB\000_Header_TB_modal.f06")
 
 N_RIGID_BODY_MODES = 6
@@ -40,7 +40,7 @@ def build_rigid_body_basis(node_xyz: np.ndarray) -> np.ndarray:
     return R
 
 
-def run_modal_analysis(skip_rigid: bool = True) -> dict:
+def run_modal_analysis(variant: str = "no_mass", skip_rigid: bool = True) -> dict:
     """
     Load ANSA modal results and return a dict compatible with the simple_model
     pipeline:
@@ -52,15 +52,21 @@ def run_modal_analysis(skip_rigid: bool = True) -> dict:
       R                : (GDof, 6)        rigid-body basis
       node_coordinates : (nNodes, 3)
       node_ids         : (nNodes,)
+
+    variant: "no_mass" | "with_mass"  — selects data/ansa_model/<variant>/
     """
-    print("Loading ANSA modal data...")
+    if variant not in VARIANTS:
+        raise ValueError(f"variant must be one of {VARIANTS}, got '{variant}'")
+
+    DATA_DIR = _ANSA_ROOT / variant
+    print(f"Loading ANSA modal data [{variant}]...")
 
     # --- Eigenvectors --------------------------------------------------------
     modes_csv = DATA_DIR / "modal_total_results.csv"
     if not modes_csv.exists():
         raise FileNotFoundError(
             f"{modes_csv} not found.\n"
-            "Run ansa_model/meta_scripts/export_modes.py from META to generate it."
+            f"Run ansa_model/meta_scripts/export_modes.py with VARIANT='{variant}' from META."
         )
     modes_all = read_modes_csv(modes_csv)       # (GDof, nModes_total)
 
@@ -78,12 +84,13 @@ def run_modal_analysis(skip_rigid: bool = True) -> dict:
         )
 
     # --- M, K matrices and node coordinates (from H5) ------------------------
-    if not _H5_FILE.exists():
+    h5_file = DATA_DIR / "matrices.h5"
+    if not h5_file.exists():
         raise FileNotFoundError(
-            f"{_H5_FILE} not found.\n"
-            "Copy the Nastran H5 file to data/ansa_model/matrices.h5"
+            f"{h5_file} not found.\n"
+            f"Copy the Nastran H5 file to data/ansa_model/{variant}/matrices.h5"
         )
-    h5data = read_h5(_H5_FILE)
+    h5data = read_h5(h5_file)
 
     GDof, n_total = modes_all.shape
     n_nodes = GDof // 6
