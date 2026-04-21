@@ -1,12 +1,19 @@
 """
-Load pre-computed modal results for the ANSA Trimmed-Body model.
+Load pre-computed modal results for the ANSA vehicle models.
+
+Variants:
+    "BIW" — Body in White (no lumped masses)
+    "TB"  — Trimmed Body (with lumped masses)
 
 Primary data source (inside the repo, gitignored):
-    data/ansa_model/modal_total_results.csv   eigenvectors (nDOF x nModes)
-    data/ansa_model/frequencies.csv           frequencies [Hz] (1 x nModes)
+    data/ansa_model/<variant>/modal_total_results.csv   eigenvectors (nDOF x nModes)
+    data/ansa_model/<variant>/frequencies.csv           frequencies [Hz] (1 x nModes)
 
-Fallback for M/K matrices and node coordinates (outside the repo, confidential):
-    META/Test_Epilysis/dummycar_TB_matrices/000_Header_TB_getKM.h5
+Fallback for frequencies:
+    data/ansa_model/<variant>/<variant>_modal.f06
+
+M/K matrices:
+    data/ansa_model/<variant>/matrices.h5
 
 To regenerate the CSVs, run export_modes.py from inside META post-processor.
 """
@@ -19,11 +26,14 @@ from ansa_model.reader import (read_modes_csv, read_frequencies_csv,
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-_REPO_ROOT    = Path(__file__).resolve().parents[1]
-_ANSA_ROOT    = _REPO_ROOT / "data" / "ansa_model"
-VARIANTS      = ["no_mass", "with_mass"]
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_ANSA_ROOT = _REPO_ROOT / "data" / "ansa_model"
+VARIANTS   = ["BIW", "TB"]
 
-_F06_FILE = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis\dummycar_TB\000_Header_TB_modal.f06")
+_F06_FILES = {
+    "BIW": Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis\BodyInWhite\dummycar_BIW_modal\output\000_Header_BIW_modal.f06"),
+    "TB":  Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis\TrimmedBody\dummycar_TB\000_Header_TB_modal.f06"),
+}
 
 N_RIGID_BODY_MODES = 6
 
@@ -40,10 +50,9 @@ def build_rigid_body_basis(node_xyz: np.ndarray) -> np.ndarray:
     return R
 
 
-def run_modal_analysis(variant: str = "no_mass", skip_rigid: bool = True) -> dict:
+def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     """
-    Load ANSA modal results and return a dict compatible with the simple_model
-    pipeline:
+    Load ANSA modal results and return a dict compatible with the pipeline:
 
       modes            : (GDof, nModes)   elastic modes (rigid skipped if skip_rigid)
       freq             : (nModes,)        frequencies [Hz]
@@ -53,7 +62,7 @@ def run_modal_analysis(variant: str = "no_mass", skip_rigid: bool = True) -> dic
       node_coordinates : (nNodes, 3)
       node_ids         : (nNodes,)
 
-    variant: "no_mass" | "with_mass"  — selects data/ansa_model/<variant>/
+    variant: "BIW" | "TB"
     """
     if variant not in VARIANTS:
         raise ValueError(f"variant must be one of {VARIANTS}, got '{variant}'")
@@ -72,14 +81,15 @@ def run_modal_analysis(variant: str = "no_mass", skip_rigid: bool = True) -> dic
 
     # --- Frequencies ---------------------------------------------------------
     freq_csv = DATA_DIR / "frequencies.csv"
+    f06_file = _F06_FILES.get(variant)
     if freq_csv.exists():
         freq_all = read_frequencies_csv(freq_csv)
-    elif _F06_FILE.exists():
-        print(f"  (frequencies.csv not found, reading from {_F06_FILE.name})")
-        freq_all = read_frequencies_f06(_F06_FILE)
+    elif f06_file and f06_file.exists():
+        print(f"  (frequencies.csv not found, reading from {f06_file.name})")
+        freq_all = read_frequencies_f06(f06_file)
     else:
         raise FileNotFoundError(
-            f"Neither {freq_csv} nor {_F06_FILE} found.\n"
+            f"Neither {freq_csv} nor the .f06 fallback found for variant '{variant}'.\n"
             "Re-run export_modes.py from META or provide the .f06 file."
         )
 
@@ -88,7 +98,8 @@ def run_modal_analysis(variant: str = "no_mass", skip_rigid: bool = True) -> dic
     if not h5_file.exists():
         raise FileNotFoundError(
             f"{h5_file} not found.\n"
-            f"Copy the Nastran H5 file to data/ansa_model/{variant}/matrices.h5"
+            f"Copy the Nastran H5 file to data/ansa_model/{variant}/matrices.h5\n"
+            f"or run ansa_model/meta_scripts/export_matrices.py with VARIANT='{variant}'."
         )
     h5data = read_h5(h5_file)
 

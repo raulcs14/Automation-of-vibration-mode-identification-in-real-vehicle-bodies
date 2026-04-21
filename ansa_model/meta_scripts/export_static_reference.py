@@ -21,9 +21,16 @@ def get_displacement_matrix(case_list, grids_group):
     """Extract displacements for all load cases into a (nNodes*3, nCases) matrix."""
     matrix = []
     for case in case_list:
-        vec = grids_group.get_deformations(case, 'all', numpy='xyz')
-        matrix.append(np.asarray(vec).reshape(-1))
-    return np.column_stack(matrix) if len(matrix) > 1 else np.asarray(matrix[0]).reshape(-1, 1)
+        x = np.asarray(grids_group.get_deformations(case, 'all', numpy='x')).reshape(-1)
+        y = np.asarray(grids_group.get_deformations(case, 'all', numpy='y')).reshape(-1)
+        z = np.asarray(grids_group.get_deformations(case, 'all', numpy='z')).reshape(-1)
+        n_nodes = len(x)
+        vec = np.empty(n_nodes * 3)
+        vec[0::3] = x
+        vec[1::3] = y
+        vec[2::3] = z
+        matrix.append(vec)
+    return np.column_stack(matrix) if len(matrix) > 1 else matrix[0].reshape(-1, 1)
 
 
 def interleave_trans_rot(trans, rot):

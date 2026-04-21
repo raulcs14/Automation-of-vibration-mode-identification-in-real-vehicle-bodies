@@ -1,8 +1,12 @@
 """
-Load pre-computed static reference displacements for the ANSA Trimmed-Body model.
+Load pre-computed static reference displacements for the ANSA vehicle models.
+
+Variants:
+    "BIW" — Body in White (no lumped masses)
+    "TB"  — Trimmed Body (with lumped masses)
 
 Primary data source (inside the repo, gitignored):
-    data/ansa_model/ref_total_results.csv   full [trans+rot] interleaved (nDOF, nRefs)
+    data/ansa_model/<variant>/ref_total_results.csv   full [trans+rot] interleaved (nDOF, nRefs)
 
 To regenerate, run ansa_model/meta_scripts/export_static_reference.py from META.
 """
@@ -11,19 +15,19 @@ from pathlib import Path
 import numpy as np
 from ansa_model.reader import read_reference_csv
 
-_REPO_ROOT  = Path(__file__).resolve().parents[1]
-_ANSA_ROOT  = _REPO_ROOT / "data" / "ansa_model"
-VARIANTS    = ["no_mass", "with_mass"]
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_ANSA_ROOT = _REPO_ROOT / "data" / "ansa_model"
+VARIANTS   = ["BIW", "TB"]
 
 REF_NAMES   = ["Torsion reference"]
 SHORT_NAMES = ["Torsion"]  # extend when more references are added
 
 
-def run_static_model(variant: str = "no_mass") -> dict:
+def run_static_model(variant: str = "BIW") -> dict:
     """
     Load ANSA static reference displacement(s).
 
-    variant: "no_mass" | "with_mass"  — selects data/ansa_model/<variant>/
+    variant: "BIW" | "TB"
 
     Returns a dict with:
       ref_moves_raw : (GDof, nRefs)  reference displacement vectors

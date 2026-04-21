@@ -350,7 +350,7 @@ def _run_ansa(cfg: dict) -> None:
     K_dense = _densify(dyn["K"])
 
     t_idx = _translational_indices(GDof)
-    title = "ANSA Trimmed Body — Identificación de modos"
+    title = f"ANSA {variant} — Identificación de modos"
 
     print("Calculando matrices MAC...")
     mac_matrices = _compute_mac_matrices(
@@ -383,13 +383,13 @@ def _interactive_config(model: str) -> dict:
     print("─"*52)
 
     # --- ANSA variant ---
-    ansa_variant = "no_mass"
+    ansa_variant = "BIW"
     if model == "ansa":
         v_idx = _ask(
             "Selecciona la variante del modelo ANSA:",
-            ["Sin masas (no_mass)", "Con masas (with_mass)"],
+            ["Body in White — BIW (sin masas)", "Trimmed Body — TB (con masas)"],
         )
-        ansa_variant = ["no_mass", "with_mass"][v_idx]
+        ansa_variant = ["BIW", "TB"][v_idx]
 
     # --- Weightings ---
     w_idx = _ask_multi(
@@ -438,7 +438,8 @@ def _interactive_config(model: str) -> dict:
     print("─"*52)
     print(f"  Modelo       : {model}")
     if model == "ansa":
-        print(f"  Variante     : {ansa_variant}")
+        labels = {"BIW": "Body in White (BIW)", "TB": "Trimmed Body (TB)"}
+        print(f"  Variante     : {labels.get(ansa_variant, ansa_variant)}")
     print(f"  Ponderaciones: {weightings}")
     print(f"  Rigid removal: {use_rigid}")
     if model == "simple":
@@ -473,7 +474,7 @@ def main():
 
     model_idx = _ask(
         "Selecciona el modelo:",
-        ["Simple model (beam FEM chassis)", "ANSA Trimmed Body (dummycar)"],
+        ["Simple model (beam FEM chassis)", "ANSA Body in White / Trimmed Body (dummycar)"],
     )
     model = ["simple", "ansa"][model_idx]
 
