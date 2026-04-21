@@ -11,7 +11,7 @@ OUTPUT_DIR is set automatically to data/ansa_model/<variant>/.
 
 from pathlib import Path
 
-VARIANT = "BIW"   # <-- change to "TB" when exporting the Trimmed Body
+VARIANT = "TB"   # <-- change to "TB" when exporting the Trimmed Body
 
 _META_ROOT   = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis")
 _OUTPUT_ROOT = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\Automation-of-vibration-mode-identification-in-real-vehicle-bodies\data")

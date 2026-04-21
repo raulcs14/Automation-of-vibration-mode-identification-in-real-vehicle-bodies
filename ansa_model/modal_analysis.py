@@ -78,6 +78,11 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
             f"Run ansa_model/meta_scripts/export_modes.py with VARIANT='{variant}' from META."
         )
     modes_all = read_modes_csv(modes_csv)       # (GDof, nModes_total)
+    if modes_all.ndim != 2 or modes_all.size == 0:
+        raise ValueError(
+            f"modal_total_results.csv for variant '{variant}' is empty or has wrong shape {modes_all.shape}.\n"
+            f"Re-run ansa_model/meta_scripts/export_modes.py with VARIANT='{variant}' from META."
+        )
 
     # --- Frequencies ---------------------------------------------------------
     freq_csv = DATA_DIR / "frequencies.csv"

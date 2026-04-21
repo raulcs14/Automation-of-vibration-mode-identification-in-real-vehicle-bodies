@@ -5,81 +5,98 @@ Run from inside META post-processor:
     File > Execute Script > export_static_reference.py
 
 Outputs (in data/ansa_model/<variant>/):
-    ref_trans_results.csv    (nNodes*3, nCases)  translational displacements
-    ref_rot_results.csv      (nNodes*3, nCases)  rotational displacements
+    ref_trans_results.csv    (nNodes*3, nCases)
+    ref_rot_results.csv      (nNodes*3, nCases)
     ref_total_results.csv    (nNodes*6, nCases)  full [trans+rot] interleaved
-
-DOF layout matches modal_total_results.csv (interleaved G-set order).
 """
 
 import numpy as np
 from meta import models, results, groups
+from dataclasses import dataclass
 from config import INPUT_STATIC_DAT, INPUT_STATIC_OP2, OUTPUT_DIR
 
 
-def get_displacement_matrix(case_list, grids_group):
-    """Extract displacements for all load cases into a (nNodes*3, nCases) matrix."""
+@dataclass
+class StaticAnalysis:
+    inputfile: str
+    out_101: str
+
+    def __post_init__(self):
+        self.model = models.LoadModel('MetaPost', self.inputfile, 'NASTRAN')
+
+    @property
+    def all_GRIDs(self):
+        return self.model.get_nodes('all')
+
+    def get_grp(self, nodes):
+        return groups.CreateGroupFromNodes(self.model.id, 'grp', nodes)
+
+    @property
+    def get_translational(self):
+        sol101 = results.LoadDeformations(self.model.id, self.out_101,
+                                          'NASTRAN', 'all',
+                                          'Displacements,Translational')
+        if not sol101:
+            raise ValueError('Empty translational displacements')
+        return sol101
+
+    @property
+    def get_rotational(self):
+        sol101 = results.LoadDeformations(self.model.id, self.out_101,
+                                          'NASTRAN', 'all',
+                                          'Displacements,Rotational')
+        if not sol101:
+            raise ValueError('Empty rotational displacements')
+        return sol101
+
+
+def get_matrix(case_list, grids_group):
     matrix = []
     for case in case_list:
-        x = np.asarray(grids_group.get_deformations(case, 'all', numpy='x')).reshape(-1)
-        y = np.asarray(grids_group.get_deformations(case, 'all', numpy='y')).reshape(-1)
-        z = np.asarray(grids_group.get_deformations(case, 'all', numpy='z')).reshape(-1)
-        n_nodes = len(x)
-        vec = np.empty(n_nodes * 3)
-        vec[0::3] = x
-        vec[1::3] = y
-        vec[2::3] = z
+        vec = grids_group.get_deformations(case, 'all', numpy='xyz')
+        vec = np.array(vec).reshape(-1)
         matrix.append(vec)
     return np.column_stack(matrix) if len(matrix) > 1 else matrix[0].reshape(-1, 1)
 
 
-def interleave_trans_rot(trans, rot):
-    """Combine (nNodes*3, nCases) trans and rot into (nNodes*6, nCases) interleaved."""
-    if trans.ndim == 1:
-        trans = trans.reshape(-1, 1)
-    if rot.ndim == 1:
-        rot = rot.reshape(-1, 1)
-    n_dof, n_cases = trans.shape
-    n_nodes = n_dof // 3
+def get_total(trans, rot):
+    DOF, n_cases = trans.shape
+    n_nodes = DOF // 3
     T = trans.reshape(n_nodes, 3, n_cases)
     R = rot.reshape(n_nodes, 3, n_cases)
     return np.concatenate([T, R], axis=1).reshape(6 * n_nodes, n_cases)
 
 
+def save_csv(matrix, path):
+    np.savetxt(path, matrix, delimiter=',')
+    print(f"Saved {path}  {matrix.shape}")
+
+
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    model = models.LoadModel('MetaPost', str(INPUT_STATIC_DAT), 'NASTRAN')
-    if model is None:
-        raise RuntimeError(f"Could not load model from:\n  {INPUT_STATIC_DAT}")
+    mod_trans = StaticAnalysis(str(INPUT_STATIC_DAT), str(INPUT_STATIC_OP2))
+    mod_rot   = StaticAnalysis(str(INPUT_STATIC_DAT), str(INPUT_STATIC_OP2))
 
-    trans_cases = results.LoadDeformations(model.id, str(INPUT_STATIC_OP2),
-                                           'NASTRAN', 'all',
-                                           'Displacements,Translational')
-    rot_cases   = results.LoadDeformations(model.id, str(INPUT_STATIC_OP2),
-                                           'NASTRAN', 'all',
-                                           'Displacements,Rotational')
+    displacements = mod_trans.get_translational
+    rotations     = mod_rot.get_rotational
 
-    if not trans_cases or not rot_cases:
-        raise ValueError(f"Could not load displacements from:\n  {INPUT_STATIC_OP2}")
+    grids       = mod_trans.all_GRIDs
+    grp_trans   = mod_trans.get_grp(grids)
+    grp_rot     = mod_rot.get_grp(grids)
 
-    all_grids = model.get_nodes('all')
-    grids_grp = groups.CreateGroupFromNodes(model.id, 'all_grids', all_grids)
+    print(f"Load cases: {len(displacements)} trans, {len(rotations)} rot")
+    print(f"Nodes: {len(grids)}")
 
-    print(f"Exporting {len(trans_cases)} load cases...")
+    trans_mat = get_matrix(displacements, grp_trans)
+    rot_mat   = get_matrix(rotations[:1],  grp_rot)
+    # Replicate rot across all translational cases so shapes match
+    rot_mat   = np.repeat(rot_mat, trans_mat.shape[1], axis=1)
+    total_mat = get_total(trans_mat, rot_mat)
 
-    trans_mat = get_displacement_matrix(trans_cases, grids_grp)
-    rot_mat   = get_displacement_matrix(rot_cases,   grids_grp)
-    total_mat = interleave_trans_rot(trans_mat, rot_mat)
-
-    np.savetxt(OUTPUT_DIR / 'ref_trans_results.csv',  trans_mat, delimiter=',')
-    np.savetxt(OUTPUT_DIR / 'ref_rot_results.csv',    rot_mat,   delimiter=',')
-    np.savetxt(OUTPUT_DIR / 'ref_total_results.csv',  total_mat, delimiter=',')
-
-    print(f"Saved to {OUTPUT_DIR}")
-    print(f"  ref_trans_results.csv : {trans_mat.shape}")
-    print(f"  ref_rot_results.csv   : {rot_mat.shape}")
-    print(f"  ref_total_results.csv : {total_mat.shape}")
+    save_csv(trans_mat, OUTPUT_DIR / 'ref_trans_results.csv')
+    save_csv(rot_mat,   OUTPUT_DIR / 'ref_rot_results.csv')
+    save_csv(total_mat, OUTPUT_DIR / 'ref_total_results.csv')
 
 
 if __name__ == '__main__':
