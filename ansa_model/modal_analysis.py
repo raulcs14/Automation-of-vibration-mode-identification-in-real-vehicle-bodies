@@ -20,8 +20,8 @@ To regenerate the CSVs, run export_modes.py from inside META post-processor.
 
 from pathlib import Path
 import numpy as np
-from ansa_model.reader import (read_modes_csv, read_frequencies_csv,
-                                read_frequencies_f06, read_h5)
+from ansa_model.reader import (read_csv, read_frequencies_f06, read_h5,
+                                keep_mask_from_nodes)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -77,7 +77,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
             f"{modes_csv} not found.\n"
             f"Run ansa_model/meta_scripts/export_modes.py with VARIANT='{variant}' from META."
         )
-    modes_all = read_modes_csv(modes_csv)       # (GDof, nModes_total)
+    modes_all = read_csv(modes_csv)              # (GDof, nModes_total)
     if modes_all.ndim != 2 or modes_all.size == 0:
         raise ValueError(
             f"modal_total_results.csv for variant '{variant}' is empty or has wrong shape {modes_all.shape}.\n"
@@ -88,7 +88,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     freq_csv = DATA_DIR / "frequencies.csv"
     f06_file = _F06_FILES.get(variant)
     if freq_csv.exists():
-        freq_all = read_frequencies_csv(freq_csv)
+        freq_all = read_csv(freq_csv, flatten=True)
     elif f06_file and f06_file.exists():
         print(f"  (frequencies.csv not found, reading from {f06_file.name})")
         freq_all = read_frequencies_f06(f06_file)
@@ -126,6 +126,18 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     node_ids = h5data["node_ids"]
     R = build_rigid_body_basis(node_xyz)
 
+    # For TB: build a DOF keep-mask that excludes CONM2 nodes
+    conm2_keep_mask = None
+    if variant == "TB":
+        conm2_csv = DATA_DIR / "conm2_node_ids.csv"
+        if conm2_csv.exists():
+            conm2_ids = read_csv(conm2_csv, dtype=int, flatten=True)
+            conm2_keep_mask = keep_mask_from_nodes(conm2_ids, h5data["uset_g"])
+            n_removed = np.sum(~conm2_keep_mask)
+            print(f"  CONM2 nodes  : {len(conm2_ids)}  ({n_removed} DOFs removed)")
+        else:
+            print(f"  (conm2_node_ids.csv not found — no CONM2 DOF removal)")
+
     return dict(
         modes            = modes,
         freq             = freq,
@@ -134,4 +146,5 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
         R                = R,
         node_coordinates = node_xyz,
         node_ids         = node_ids,
+        conm2_keep_mask  = conm2_keep_mask,
     )

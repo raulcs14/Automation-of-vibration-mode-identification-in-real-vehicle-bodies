@@ -126,30 +126,49 @@ def read_frequencies_f06(f06_path: Path) -> np.ndarray:
     return freq
 
 
-def read_frequencies_csv(csv_path: Path) -> np.ndarray:
-    """Load frequencies [Hz] from a single-row CSV (exported by export_modes.py)."""
-    data = np.loadtxt(csv_path, delimiter=",")
-    return data.flatten()
-
-
 # ---------------------------------------------------------------------------
-# CSV readers (modes, reference displacement)
+# Generic CSV reader
 # ---------------------------------------------------------------------------
 
-def read_modes_csv(csv_path: Path) -> np.ndarray:
+def read_csv(csv_path: Path, dtype=float, flatten: bool = False,
+             ensure_2d: bool = False) -> np.ndarray:
     """
-    Load modal eigenvectors from a CSV (nDOF × nModes).
-    Rows are DOFs in interleaved layout: [Ux0,Uy0,Uz0,Rx0,Ry0,Rz0, Ux1,...].
-    """
-    return np.loadtxt(csv_path, delimiter=",")
+    Load a numeric CSV produced by the META export scripts.
 
-
-def read_reference_csv(csv_path: Path) -> np.ndarray:
+    dtype     : numpy dtype for the array (default float)
+    flatten   : return a 1-D array (for frequencies, node ID lists)
+    ensure_2d : if the loaded array is 1-D, reshape to (n, 1) (for reference vectors)
     """
-    Load reference displacement vector(s) from a CSV.
-    Returns (nDOF, nRefs) — works for both 1-D and 2-D CSV files.
-    """
-    data = np.loadtxt(csv_path, delimiter=",")
-    if data.ndim == 1:
+    data = np.loadtxt(csv_path, delimiter=",", dtype=dtype)
+    if flatten:
+        return data.flatten()
+    if ensure_2d and data.ndim == 1:
         data = data.reshape(-1, 1)
     return data
+
+
+def dof_indices_for_nodes(node_ids_to_remove: np.ndarray,
+                          uset_g: np.ndarray) -> np.ndarray:
+    """
+    Return the G-set row indices (DOF positions) that belong to the given node IDs.
+
+    uset_g is a structured array with fields 'ID' and 'C' (component 1-6).
+    One row per DOF; the row index equals the matrix/vector position.
+    """
+    id_field = uset_g["ID"].astype(int)
+    mask = np.isin(id_field, node_ids_to_remove)
+    return np.where(mask)[0]
+
+
+def keep_mask_from_nodes(node_ids_to_remove: np.ndarray,
+                         uset_g: np.ndarray) -> np.ndarray:
+    """
+    Return a boolean keep-mask of length nDOF: True for DOFs to retain,
+    False for DOFs belonging to node_ids_to_remove.
+    """
+    remove_idx = dof_indices_for_nodes(node_ids_to_remove, uset_g)
+    mask = np.ones(len(uset_g), dtype=bool)
+    mask[remove_idx] = False
+    return mask
+
+

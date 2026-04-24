@@ -15,6 +15,9 @@ data/
 *.npz
 *.mat
 
+# META debug / reference scripts
+ansa_model/meta_scripts/debug_*.py
+
 # IDE
 .vscode/
 .idea/

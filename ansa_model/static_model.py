@@ -13,7 +13,7 @@ To regenerate, run ansa_model/meta_scripts/export_static_reference.py from META.
 
 from pathlib import Path
 import numpy as np
-from ansa_model.reader import read_reference_csv
+from ansa_model.reader import read_csv
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ANSA_ROOT = _REPO_ROOT / "data" / "ansa_model"
@@ -45,6 +45,6 @@ def run_static_model(variant: str = "BIW") -> dict:
             f"Run ansa_model/meta_scripts/export_static_reference.py with VARIANT='{variant}' from META."
         )
 
-    ref = read_reference_csv(ref_csv)   # (GDof, nRefs)
+    ref = read_csv(ref_csv, ensure_2d=True)   # (GDof, nRefs)
     print(f"  Reference shape: {ref.shape}")
     return dict(ref_moves_raw=ref)
