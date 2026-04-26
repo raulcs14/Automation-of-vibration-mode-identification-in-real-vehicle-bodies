@@ -20,7 +20,8 @@ _ANSA_ROOT = _REPO_ROOT / "data" / "ansa_model"
 VARIANTS   = ["BIW", "TB"]
 
 REF_NAMES   = ["Torsion reference"]
-SHORT_NAMES = ["Torsion"]  # extend when more references are added
+SHORT_NAMES = ["Torsion"]
+# Add entries here when more reference load cases are exported from META.
 
 
 def run_static_model(variant: str = "BIW") -> dict:
@@ -45,6 +46,6 @@ def run_static_model(variant: str = "BIW") -> dict:
             f"Run ansa_model/meta_scripts/export_static_reference.py with VARIANT='{variant}' from META."
         )
 
-    ref = read_csv(ref_csv, ensure_2d=True)   # (GDof, nRefs)
-    print(f"  Reference shape: {ref.shape}")
-    return dict(ref_moves_raw=ref)
+    ref = read_csv(ref_csv, ensure_2d=True)[:, :len(REF_NAMES)]   # keep only named columns
+    print(f"  Reference shape: {ref.shape}  ({len(REF_NAMES)} reference(s): {REF_NAMES})")
+    return dict(ref_moves_raw=ref, ref_names=list(REF_NAMES), short_names=list(SHORT_NAMES))
