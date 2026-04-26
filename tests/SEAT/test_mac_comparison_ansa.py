@@ -28,18 +28,11 @@ from ansa_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
 from ansa_model.static_model    import run_static_model, REF_NAMES
 from common.mac_core            import compute_mac
 from common.rigid_body          import remove_rigid_body_component
+from common.utils               import translational_dof_indices, densify
+from test_helpers               import best_mac_per_mode
 
 F0_ENERGY  = 40.0
 N_TOP_MODES = 20   # modes shown in the comparison plot
-
-
-def translational_dof_indices(gdof: int) -> np.ndarray:
-    return np.concatenate([np.arange(d, gdof, 6) for d in range(3)])
-
-
-def best_mac_per_mode(mac: np.ndarray) -> np.ndarray:
-    """(nModes,) array of max MAC value over all references."""
-    return mac.max(axis=1)
 
 
 def compute_all_variants(modes, ref, M_dense, K_dense, R, t_idx) -> dict:
@@ -149,8 +142,8 @@ def main():
     t_idx   = translational_dof_indices(GDof)
     M       = dyn["M"]
     K       = dyn["K"]
-    M_dense = M.toarray() if hasattr(M, "toarray") else M
-    K_dense = K.toarray() if hasattr(K, "toarray") else K
+    M_dense = densify(M)
+    K_dense = densify(K)
 
     print("Computing all MAC variants...")
     variants = compute_all_variants(modes, ref, M_dense, K_dense, R, t_idx)

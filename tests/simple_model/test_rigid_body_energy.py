@@ -24,10 +24,7 @@ import matplotlib.pyplot as plt
 from simple_model.analysis.static_model   import run_static_model, REF_NAMES
 from simple_model.analysis.modal_analysis import run_modal_analysis
 from common.rigid_body                    import remove_rigid_body_component
-
-
-def translational_dof_indices(gdof: int) -> np.ndarray:
-    return np.concatenate([np.arange(d, gdof, 6) for d in range(3)])
+from common.utils                         import translational_dof_indices
 
 
 def mass_norm(V: np.ndarray, M: np.ndarray) -> np.ndarray:

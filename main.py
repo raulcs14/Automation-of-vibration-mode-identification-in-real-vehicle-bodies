@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from common.utils import translational_dof_indices as _translational_indices, densify as _densify
 
 # ---------------------------------------------------------------------------
 # Interactive menu helpers
@@ -71,10 +72,6 @@ def _ask_yes(prompt: str, default: bool = False) -> bool:
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def _translational_indices(gdof: int) -> np.ndarray:
-    return np.concatenate([np.arange(d, gdof, 6) for d in range(3)])
-
-
 def _remove_dofs(keep_mask: np.ndarray, modes, refs, M, K, R) -> tuple:
     """
     Apply a boolean DOF keep-mask to modes, refs, M, K and R.
@@ -99,10 +96,6 @@ def _remove_dofs(keep_mask: np.ndarray, modes, refs, M, K, R) -> tuple:
     R_r = R[idx, :]
 
     return modes_r, refs_r, M_r, K_r, R_r
-
-
-def _densify(mat):
-    return mat.toarray() if hasattr(mat, "toarray") else np.asarray(mat)
 
 
 def _select_top_from_matrices(mac_matrices: dict, n: int) -> np.ndarray:

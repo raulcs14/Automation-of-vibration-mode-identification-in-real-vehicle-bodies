@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 from ansa_model.reader import (read_csv, read_frequencies_f06, read_h5,
                                 keep_mask_from_nodes)
+from common.rigid_body import build_rigid_body_basis
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -36,18 +37,6 @@ _F06_FILES = {
 }
 
 N_RIGID_BODY_MODES = 6
-
-
-def build_rigid_body_basis(node_xyz: np.ndarray) -> np.ndarray:
-    """Build rigid-body basis R (6*N x 6). DOF order: [Ux,Uy,Uz,Rx,Ry,Rz]."""
-    n_nodes = node_xyz.shape[0]
-    R = np.zeros((6 * n_nodes, 6))
-    for i, (x, y, z) in enumerate(node_xyz):
-        R[6*i + 0, 0] = 1.0;  R[6*i + 1, 1] = 1.0;  R[6*i + 2, 2] = 1.0
-        R[6*i + 1, 3] = -z;   R[6*i + 2, 3] =  y
-        R[6*i + 0, 4] =  z;   R[6*i + 2, 4] = -x
-        R[6*i + 0, 5] = -y;   R[6*i + 1, 5] =  x
-    return R
 
 
 def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:

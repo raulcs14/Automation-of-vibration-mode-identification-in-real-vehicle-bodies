@@ -18,22 +18,10 @@ from simple_model.analysis.modal_analysis import run_modal_analysis
 from common.subdomain import average_zones
 from common.visualization.vectors import plot_subdomain_vectors
 from simple_model.geometry.chassis import build_chassis_geometry
+from common.utils import translational_dof_indices
+from test_helpers import ask_mode
 
 SCALE_FACTOR = 5.0
-
-
-def ask_mode(n_modes, freq):
-    print("\nElastic mode frequencies:")
-    for i in range(n_modes):
-        print(f"  {i+1:3d}.  {freq[i]:.2f} Hz")
-    print(f"    0.  Show all ({n_modes} modes)")
-    while True:
-        raw = input("Select mode to inspect (0 = all): ").strip()
-        if raw == "" or raw == "0":
-            return None
-        if raw.isdigit() and 1 <= int(raw) <= n_modes:
-            return int(raw) - 1
-        print(f"  Please enter a number between 0 and {n_modes}.")
 
 
 def main():
@@ -50,7 +38,7 @@ def main():
 
     # Translational DOFs only
     GDof = modes.shape[0]
-    t_idx = np.concatenate([np.arange(d, GDof, 6) for d in range(3)])
+    t_idx = translational_dof_indices(GDof)
     modes_t = modes[t_idx, :]
 
     # Compute reduced modes: (3·nZones, nModes)

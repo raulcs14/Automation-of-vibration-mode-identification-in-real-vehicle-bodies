@@ -18,22 +18,14 @@ from simple_model.analysis.static_model import run_static_model, REF_NAMES
 from simple_model.geometry.chassis import build_chassis_geometry
 from common.subdomain import average_zones
 from common.visualization.vectors import plot_subdomain_vectors
+from common.utils import translational_dof_indices
+from test_helpers import ask_case as _ask_case
 
 SCALE_FACTOR = 5.0
 
 
 def ask_case(n_cases):
-    print("\nAvailable reference cases:")
-    for i, name in enumerate(REF_NAMES):
-        print(f"  {i+1:2d}. {name}")
-    print(f"   0. Show all ({n_cases} cases)")
-    while True:
-        raw = input("Select case (0 = all): ").strip()
-        if raw == "" or raw == "0":
-            return None
-        if raw.isdigit() and 1 <= int(raw) <= n_cases:
-            return int(raw) - 1
-        print(f"  Please enter a number between 0 and {n_cases}.")
+    return _ask_case(n_cases, REF_NAMES)
 
 
 def main():
@@ -49,7 +41,7 @@ def main():
 
     # Translational DOFs only
     GDof = raw.shape[0]
-    t_idx = np.concatenate([np.arange(d, GDof, 6) for d in range(3)])
+    t_idx = translational_dof_indices(GDof)
     raw_t = raw[t_idx, :]
 
     # Reduce to (3·nZones, n_cases)

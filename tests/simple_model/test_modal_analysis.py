@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from simple_model.analysis.modal_analysis import run_modal_analysis
 from simple_model.geometry.chassis import _draw_mesh_lines, _set_equal_axes
 from common.visualization.mesh import draw_interpolated_frame
+from test_helpers import ask_mode
 
 SCALE = 0.5   # same as MATLAB scaleFact = 0.5
 
@@ -36,20 +37,6 @@ def plot_mode(ax, nc, en, mode, freq_hz, mode_number, fontsize=8):
     ax.tick_params(labelsize=fontsize)
     ax.view_init(elev=20, azim=135)
     ax.grid(True)
-
-
-def ask_mode(n_modes, freq):
-    print("\nElastic mode frequencies:")
-    for i in range(n_modes):
-        print(f"  {i+1:3d}.  {freq[i]:.2f} Hz")
-    print(f"    0.  Show all ({n_modes} modes)")
-    while True:
-        raw = input("Select mode to inspect (0 = all): ").strip()
-        if raw == "" or raw == "0":
-            return None
-        if raw.isdigit() and 1 <= int(raw) <= n_modes:
-            return int(raw) - 1
-        print(f"  Please enter a number between 0 and {n_modes}.")
 
 
 def main():

@@ -14,6 +14,7 @@ import numpy as np
 from meta import models, results, groups
 from dataclasses import dataclass
 from config import INPUT_STATIC_DAT, INPUT_STATIC_OP2, OUTPUT_DIR
+from utils import save_csv, interleave_6dof, extract_deformation_matrix
 
 
 @dataclass
@@ -50,28 +51,6 @@ class StaticAnalysis:
         return sol101
 
 
-def get_matrix(case_list, grids_group):
-    matrix = []
-    for case in case_list:
-        vec = grids_group.get_deformations(case, 'all', numpy='xyz')
-        vec = np.array(vec).reshape(-1)
-        matrix.append(vec)
-    return np.column_stack(matrix) if len(matrix) > 1 else matrix[0].reshape(-1, 1)
-
-
-def get_total(trans, rot):
-    DOF, n_cases = trans.shape
-    n_nodes = DOF // 3
-    T = trans.reshape(n_nodes, 3, n_cases)
-    R = rot.reshape(n_nodes, 3, n_cases)
-    return np.concatenate([T, R], axis=1).reshape(6 * n_nodes, n_cases)
-
-
-def save_csv(matrix, path):
-    np.savetxt(path, matrix, delimiter=',')
-    print(f"Saved {path}  {matrix.shape}")
-
-
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -88,11 +67,11 @@ def main():
     print(f"Load cases: {len(displacements)} trans, {len(rotations)} rot")
     print(f"Nodes: {len(grids)}")
 
-    trans_mat = get_matrix(displacements, grp_trans)
-    rot_mat   = get_matrix(rotations[:1],  grp_rot)
+    trans_mat = extract_deformation_matrix(displacements, grp_trans)
+    rot_mat   = extract_deformation_matrix(rotations[:1],  grp_rot)
     # Replicate rot across all translational cases so shapes match
     rot_mat   = np.repeat(rot_mat, trans_mat.shape[1], axis=1)
-    total_mat = get_total(trans_mat, rot_mat)
+    total_mat = interleave_6dof(trans_mat, rot_mat)
 
     save_csv(trans_mat, OUTPUT_DIR / 'ref_trans_results.csv')
     save_csv(rot_mat,   OUTPUT_DIR / 'ref_rot_results.csv')

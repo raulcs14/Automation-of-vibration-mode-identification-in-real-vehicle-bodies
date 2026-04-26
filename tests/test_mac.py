@@ -25,38 +25,10 @@ from common.mac_core                      import compute_mac
 from common.subdomain                     import average_zones, reduce_mk_by_subdomains
 from common.rigid_body                    import remove_rigid_body_component
 from common.visualization.mac_plot        import plot_mac_matrix
+from common.utils                         import translational_dof_indices
+from test_helpers                         import ask_yn, ask_weighting
 
 F0_ENERGY = 40.0
-
-
-def translational_dof_indices(gdof: int) -> np.ndarray:
-    """Block order: [Ux_0..Ux_N | Uy_0..Uy_N | Uz_0..Uz_N]."""
-    return np.concatenate([np.arange(d, gdof, 6) for d in range(3)])
-
-
-def ask_yn(prompt: str) -> bool:
-    while True:
-        raw = input(prompt + " (y/n): ").strip().lower()
-        if raw in ("y", "n"):
-            return raw == "y"
-        print("  Please enter y or n.")
-
-
-def ask_weighting() -> int:
-    options = {
-        1: "Identity (plain MAC)",
-        2: "Mass-weighted",
-        3: "Stiffness-weighted",
-        4: f"Total-energy-weighted  (M·(2π·{F0_ENERGY})² + K)",
-    }
-    print("\nWeighting:")
-    for k, name in options.items():
-        print(f"  {k}. {name}")
-    while True:
-        raw = input("Select (1-4): ").strip()
-        if raw.isdigit() and 1 <= int(raw) <= 4:
-            return int(raw), options[int(raw)]
-        print("  Please enter a number between 1 and 4.")
 
 
 def print_ranking(mac: np.ndarray, freq: np.ndarray, label: str) -> None:

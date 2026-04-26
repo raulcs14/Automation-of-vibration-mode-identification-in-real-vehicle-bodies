@@ -26,44 +26,16 @@ from simple_model.geometry.chassis        import (build_chassis_geometry,
 from common.rigid_body                    import remove_rigid_body_component
 from common.subdomain                     import average_zones
 from common.visualization.vectors         import plot_subdomain_vectors
+from common.utils                         import translational_dof_indices
+from test_helpers                         import ask_case as _ask_case, ask_yn, plot_deformed as _plot_deformed
 
 
 def ask_case(n_cases):
-    print("\nAvailable reference cases:")
-    for i, name in enumerate(REF_NAMES):
-        print(f"  {i+1:2d}. {name}")
-    print(f"   0. Show all ({n_cases} cases)")
-    while True:
-        raw = input("Select case (0 = all): ").strip()
-        if raw == "" or raw == "0":
-            return None
-        if raw.isdigit() and 1 <= int(raw) <= n_cases:
-            return int(raw) - 1
-        print(f"  Please enter a number between 0 and {n_cases}.")
-
-
-def ask_yn(prompt: str) -> bool:
-    while True:
-        raw = input(prompt + " (y/n): ").strip().lower()
-        if raw in ("y", "n"):
-            return raw == "y"
-        print("  Please enter y or n.")
+    return _ask_case(n_cases, REF_NAMES)
 
 
 def plot_deformed(ax, nc, en, u_raw, name, target_frac=0.08):
-    UX = u_raw[0::6];  UY = u_raw[1::6];  UZ = u_raw[2::6]
-    umax = np.sqrt(UX**2 + UY**2 + UZ**2).max()
-    bbox_diag = np.linalg.norm(nc.max(axis=0) - nc.min(axis=0))
-    scale = np.clip(target_frac * bbox_diag / max(umax, 1e-12), 0.1, 200)
-
-    nc_def = nc + scale * np.column_stack([UX, UY, UZ])
-    _draw_mesh_lines(ax, nc,     en, linestyle="k--")
-    _draw_mesh_lines(ax, nc_def, en, linestyle="r-")
-    _set_equal_axes(ax, np.vstack([nc, nc_def]))
-    ax.set_title(f"{name}\nscale={scale:.1f}  umax={umax:.2e}", fontsize=7)
-    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
-    ax.view_init(elev=20, azim=135)
-    ax.grid(True)
+    _plot_deformed(ax, nc, en, u_raw, name, _draw_mesh_lines, _set_equal_axes, target_frac)
 
 
 def show_single(nc, en, u_before, u_after, name):
@@ -119,7 +91,7 @@ def main():
     # --- Average zones option -----------------------------------------------
     use_zones = ask_yn("\nShow averaged subdomain vectors after rigid removal?")
     if use_zones:
-        t_idx   = np.concatenate([np.arange(d, GDof, 6) for d in range(3)])
+        t_idx   = translational_dof_indices(GDof)
         proj_t  = raw_proj[t_idx, :]
         vec_red = average_zones(proj_t, subdomains, n_nodes)
 

@@ -32,18 +32,12 @@ from simple_model.geometry.chassis        import build_chassis_geometry
 from common.mac_core                      import compute_mac
 from common.rigid_body                    import remove_rigid_body_component
 from common.subdomain                     import average_zones, reduce_mk_by_subdomains
+from common.utils                         import translational_dof_indices
+from test_helpers                         import best_mac_per_mode
 
 REF_CASE   = 3        # 0-based index → case 4 "Roll/Torsion global"
 F0_ENERGY  = 40.0
 N_TOP_MODES = 10
-
-
-def translational_dof_indices(gdof: int) -> np.ndarray:
-    return np.concatenate([np.arange(d, gdof, 6) for d in range(3)])
-
-
-def best_mac_per_mode(mac: np.ndarray) -> np.ndarray:
-    return mac.max(axis=1)
 
 
 def compute_all_variants(modes, ref, M, K, R, t_idx,

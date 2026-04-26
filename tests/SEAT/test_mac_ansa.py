@@ -22,38 +22,10 @@ from ansa_model.static_model    import run_static_model, REF_NAMES
 from common.mac_core            import compute_mac
 from common.rigid_body          import remove_rigid_body_component
 from common.visualization.mac_plot import plot_mac_matrix
+from common.utils               import translational_dof_indices, densify
+from test_helpers               import ask_yn, ask_weighting
 
 F0_ENERGY = 40.0
-
-
-def translational_dof_indices(gdof: int) -> np.ndarray:
-    """Translational DOFs in block layout: [Ux_0..N | Uy_0..N | Uz_0..N]."""
-    return np.concatenate([np.arange(d, gdof, 6) for d in range(3)])
-
-
-def ask_yn(prompt: str) -> bool:
-    while True:
-        raw = input(prompt + " (y/n): ").strip().lower()
-        if raw in ("y", "n"):
-            return raw == "y"
-        print("  Please enter y or n.")
-
-
-def ask_weighting() -> tuple:
-    options = {
-        1: "Identity (plain MAC)",
-        2: "Mass-weighted",
-        3: "Stiffness-weighted",
-        4: f"Total-energy-weighted  (M·(2π·{F0_ENERGY})² + K)",
-    }
-    print("\nWeighting:")
-    for k, name in options.items():
-        print(f"  {k}. {name}")
-    while True:
-        raw = input("Select (1-4): ").strip()
-        if raw.isdigit() and 1 <= int(raw) <= 4:
-            return int(raw), options[int(raw)]
-        print("  Please enter a number between 1 and 4.")
 
 
 N_TOP_MODES = 30
@@ -98,7 +70,7 @@ def main():
     Phi = modes
     Psi = ref
     if use_rigid:
-        M_dense = M.toarray() if hasattr(M, "toarray") else M
+        M_dense = densify(M)
         Psi = remove_rigid_body_component(ref, M_dense, R)
 
         t_idx   = translational_dof_indices(GDof)
@@ -130,8 +102,8 @@ def main():
     if w_idx == 1:
         mac = compute_mac(Phi_t, Psi_t)
     else:
-        M_dense = M.toarray() if hasattr(M, "toarray") else M
-        K_dense = K.toarray() if hasattr(K, "toarray") else K
+        M_dense = densify(M)
+        K_dense = densify(K)
         M_t = M_dense[np.ix_(t_idx, t_idx)]
         K_t = K_dense[np.ix_(t_idx, t_idx)]
         W_ener = M_t * (2 * np.pi * F0_ENERGY) ** 2 + K_t

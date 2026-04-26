@@ -9,47 +9,13 @@ from scipy.linalg import eigh
 from simple_model.geometry.chassis import build_chassis_geometry
 from simple_model.fem.stiffness import form_stiffness
 from simple_model.fem.mass import form_mass
+from common.rigid_body import build_rigid_body_basis
 import config
 
 DATA_DIR = Path("data/simple_model")
 
 N_RIGID_BODY_MODES = 6
 N_ELASTIC_MODES    = 30
-
-
-def build_rigid_body_basis(node_coordinates: np.ndarray) -> np.ndarray:
-    """
-    Build the rigid-body mode basis R (GDof x 6).
-
-    Columns: Tx, Ty, Tz, Rx (rot about X), Ry (rot about Y), Rz (rot about Z).
-    DOF order per node: [Ux Uy Uz Rx Ry Rz].
-    """
-    n_nodes = node_coordinates.shape[0]
-    GDof    = 6 * n_nodes
-    R       = np.zeros((GDof, 6))
-
-    for n in range(n_nodes):
-        x, y, z = node_coordinates[n]
-        idx = slice(6*n, 6*n + 6)   # 6 DOFs of this node
-
-        # Translations
-        R[6*n + 0, 0] = 1.0   # Tx → Ux
-        R[6*n + 1, 1] = 1.0   # Ty → Uy
-        R[6*n + 2, 2] = 1.0   # Tz → Uz
-
-        # Rotation about X: u = [0, -z, y]
-        R[6*n + 1, 3] = -z
-        R[6*n + 2, 3] =  y
-
-        # Rotation about Y: u = [z, 0, -x]
-        R[6*n + 0, 4] =  z
-        R[6*n + 2, 4] = -x
-
-        # Rotation about Z: u = [-y, x, 0]
-        R[6*n + 0, 5] = -y
-        R[6*n + 1, 5] =  x
-
-    return R
 
 
 def run_modal_analysis() -> dict:

@@ -15,6 +15,7 @@ import numpy as np
 from meta import models, results, groups
 from dataclasses import dataclass
 from config import INPUT_MODAL_DAT, INPUT_MODAL_OP2, OUTPUT_DIR, VARIANT
+from utils import save_csv, interleave_6dof, extract_deformation_matrix
 
 
 @dataclass
@@ -51,30 +52,6 @@ class ModalAnalysis:
         return sol103
 
 
-def get_modes_eigvec(mode_list, grids_group):
-    print(f"Number of modes: {len(mode_list)}")
-    modes_matrix = []
-    for mode in mode_list:
-        eigvec = grids_group.get_deformations(mode, 'all', numpy='xyz')
-        eigvec = np.array(eigvec).reshape(-1)
-        modes_matrix.append(eigvec)
-    print(f"Eigenvector shape: {eigvec.shape}")
-    return np.column_stack(modes_matrix)
-
-
-def get_total_eigenvectors(trans_modes, rot_modes):
-    DOF, n_modes = trans_modes.shape
-    n_nodes = DOF // 3
-    T = trans_modes.reshape(n_nodes, 3, n_modes)
-    R = rot_modes.reshape(n_nodes, 3, n_modes)
-    return np.concatenate([T, R], axis=1).reshape(6 * n_nodes, n_modes)
-
-
-def save_csv(matrix, path):
-    np.savetxt(path, matrix, delimiter=',')
-    print(f"Saved {path}  {matrix.shape}")
-
-
 def get_conm2_node_ids(model) -> np.ndarray:
     """Return the GRID IDs of nodes connected to CONM2 elements in the model."""
     node_ids = set()
@@ -101,9 +78,9 @@ def main():
 
     print(f"Modes: {len(trans_modes)}  |  Nodes: {len(grids)}")
 
-    trans_mat = get_modes_eigvec(trans_modes, grp_trans)
-    rot_mat   = get_modes_eigvec(rot_modes,   grp_rot)
-    total_mat = get_total_eigenvectors(trans_mat, rot_mat)
+    trans_mat = extract_deformation_matrix(trans_modes, grp_trans)
+    rot_mat   = extract_deformation_matrix(rot_modes,   grp_rot)
+    total_mat = interleave_6dof(trans_mat, rot_mat)
 
     save_csv(trans_mat, OUTPUT_DIR / 'modal_trans_results.csv')
     save_csv(rot_mat,   OUTPUT_DIR / 'modal_rot_results.csv')
