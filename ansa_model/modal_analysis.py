@@ -20,6 +20,7 @@ To regenerate the CSVs, run export_modes.py from inside META post-processor.
 
 from pathlib import Path
 import numpy as np
+import scipy.sparse as sp
 from ansa_model.reader import (read_csv, read_frequencies_f06, read_h5,
                                 keep_mask_from_nodes)
 from common.rigid_body import build_rigid_body_basis
@@ -87,16 +88,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
             "Re-run export_modes.py from META or provide the .f06 file."
         )
 
-    # --- M, K matrices and node coordinates (from H5) ------------------------
-    h5_file = DATA_DIR / "matrices.h5"
-    if not h5_file.exists():
-        raise FileNotFoundError(
-            f"{h5_file} not found.\n"
-            f"Copy the Nastran H5 file to data/ansa_model/{variant}/matrices.h5\n"
-            f"or run ansa_model/meta_scripts/export_matrices.py with VARIANT='{variant}'."
-        )
-    h5data = read_h5(h5_file)
-
+    # --- M, K matrices and node coordinates ----------------------------------
     GDof, n_total = modes_all.shape
     n_nodes = GDof // 6
     print(f"  Modes loaded : {n_total}  ({GDof} DOFs, {n_nodes} nodes)")
@@ -111,13 +103,29 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
         modes = modes_all
         freq  = freq_all
 
-    node_xyz = h5data["node_xyz"]
-    node_ids = h5data["node_ids"]
-    R = build_rigid_body_basis(node_xyz)
-
-    # For TB: build a DOF keep-mask that excludes CONM2 nodes
     conm2_keep_mask = None
-    if variant == "TB":
+
+    if variant == "BIW":
+        # BIW: matrices exported as separate .npz files, coords as CSV
+        K = sp.load_npz(DATA_DIR / "K.npz")
+        M = sp.load_npz(DATA_DIR / "M.npz")
+        node_xyz = read_csv(DATA_DIR / "node_coords.csv")
+        node_ids = read_csv(DATA_DIR / "node_ids.csv", dtype=int, flatten=True)
+    else:
+        # TB: matrices and node data come from the H5 file
+        h5_file = DATA_DIR / "matrices.h5"
+        if not h5_file.exists():
+            raise FileNotFoundError(
+                f"{h5_file} not found.\n"
+                f"Copy the Nastran H5 file to data/ansa_model/{variant}/matrices.h5\n"
+                f"or run ansa_model/meta_scripts/export_matrices.py with VARIANT='{variant}'."
+            )
+        h5data = read_h5(h5_file)
+        K        = h5data["K"]
+        M        = h5data["M"]
+        node_xyz = h5data["node_xyz"]
+        node_ids = h5data["node_ids"]
+
         conm2_csv = DATA_DIR / "conm2_node_ids.csv"
         if conm2_csv.exists():
             conm2_ids = read_csv(conm2_csv, dtype=int, flatten=True)
@@ -127,11 +135,13 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
         else:
             print(f"  (conm2_node_ids.csv not found — no CONM2 DOF removal)")
 
+    R = build_rigid_body_basis(node_xyz)
+
     return dict(
         modes            = modes,
         freq             = freq,
-        K                = h5data["K"],
-        M                = h5data["M"],
+        K                = K,
+        M                = M,
         R                = R,
         node_coordinates = node_xyz,
         node_ids         = node_ids,

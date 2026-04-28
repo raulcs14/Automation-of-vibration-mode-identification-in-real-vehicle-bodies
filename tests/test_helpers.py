@@ -14,6 +14,20 @@ _WEIGHTING_OPTIONS = {
 }
 
 
+def ask_variant() -> str:
+    """Ask the user which model variant to use; return 'BIW' or 'TB'."""
+    print("\nModel variant:")
+    print("  1. BIW — Body in White (no lumped masses)")
+    print("  2. TB  — Trimmed Body  (with lumped masses)")
+    while True:
+        raw = input("Select (1/2): ").strip()
+        if raw == "1":
+            return "BIW"
+        if raw == "2":
+            return "TB"
+        print("  Please enter 1 or 2.")
+
+
 def ask_yn(prompt: str) -> bool:
     while True:
         raw = input(prompt + " (y/n): ").strip().lower()

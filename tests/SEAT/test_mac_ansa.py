@@ -12,6 +12,7 @@ Interactive flow
 
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
@@ -23,7 +24,7 @@ from common.mac_core            import compute_mac
 from common.rigid_body          import remove_rigid_body_component
 from common.visualization.mac_plot import plot_mac_matrix
 from common.utils               import translational_dof_indices, densify
-from test_helpers               import ask_yn, ask_weighting
+from test_helpers               import ask_yn, ask_weighting, ask_variant
 
 F0_ENERGY = 40.0
 
@@ -52,8 +53,9 @@ def print_ranking(mac: np.ndarray, freq: np.ndarray, label: str,
 
 
 def main():
-    dyn  = run_modal_analysis()
-    stat = run_static_model()
+    variant = ask_variant()
+    dyn  = run_modal_analysis(variant)
+    stat = run_static_model(variant)
 
     modes = dyn["modes"]          # (GDof, nModes)
     freq  = dyn["freq"]

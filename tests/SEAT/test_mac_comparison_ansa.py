@@ -18,6 +18,7 @@ Run from anywhere:
 
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
@@ -29,7 +30,7 @@ from ansa_model.static_model    import run_static_model, REF_NAMES
 from common.mac_core            import compute_mac
 from common.rigid_body          import remove_rigid_body_component
 from common.utils               import translational_dof_indices, densify
-from test_helpers               import best_mac_per_mode
+from test_helpers               import best_mac_per_mode, ask_variant
 
 F0_ENERGY  = 40.0
 N_TOP_MODES = 20   # modes shown in the comparison plot
@@ -128,9 +129,10 @@ def plot_comparison(variants: dict, idx: np.ndarray, freq: np.ndarray) -> None:
 
 
 def main():
+    variant = ask_variant()
     print("Loading data...")
-    dyn  = run_modal_analysis()
-    stat = run_static_model()
+    dyn  = run_modal_analysis(variant)
+    stat = run_static_model(variant)
 
     modes    = dyn["modes"]
     freq     = dyn["freq"]
