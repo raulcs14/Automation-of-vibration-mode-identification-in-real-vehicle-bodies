@@ -16,7 +16,13 @@ Output (in data/ansa_model/<variant>/):
 """
 
 import shutil
-from config import VARIANT, OUTPUT_DIR, INPUT_MATRICES_H5
+from config import VARIANT, OUTPUT_DIR
+if VARIANT == "BIW":
+    from config import INPUT_MATRICES_K, INPUT_MATRICES_M
+elif VARIANT == "TB":
+    from config import INPUT_MATRICES_H5
+else:
+    raise ValueError(f"Unknown VARIANT '{VARIANT}' in config.py. Expected 'TB' or 'BIW'.")
 
 
 def _export_tb():
@@ -34,24 +40,19 @@ def _export_tb():
     print(f"Copied {INPUT_MATRICES_H5.name} → {dest}  ({size_mb:.1f} MB)")
 
 
-def _verify_biw():
-    missing = []
-    for name in ("K.npz", "M.npz"):
-        path = OUTPUT_DIR / name
-        if path.exists():
-            size_mb = path.stat().st_size / 1024 / 1024
-            print(f"  OK  {name}  ({size_mb:.1f} MB)")
-        else:
-            print(f"  MISSING  {name}")
-            missing.append(name)
+def _export_biw():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    if missing:
-        raise FileNotFoundError(
-            f"Matrix files not found: {', '.join(missing)}\n"
-            f"Run the META getKM macro and export to:\n  {OUTPUT_DIR}"
-        )
-
-    print("All BIW matrix files present.")
+    for src in (INPUT_MATRICES_K, INPUT_MATRICES_M):
+        if not src.exists():
+            raise FileNotFoundError(
+                f"Matrix file not found:\n  {src}\n"
+                "Check the 'matrices_K/M' paths in config.py."
+            )
+        dest = OUTPUT_DIR / src.name
+        shutil.copy2(src, dest)
+        size_mb = dest.stat().st_size / 1024 / 1024
+        print(f"Copied {src.name} → {dest}  ({size_mb:.1f} MB)")
 
 
 def main():
@@ -61,7 +62,7 @@ def main():
     if VARIANT == "TB":
         _export_tb()
     else:
-        _verify_biw()
+        _export_biw()
 
 
 if __name__ == '__main__':
