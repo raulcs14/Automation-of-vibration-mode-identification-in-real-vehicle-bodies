@@ -89,22 +89,31 @@ WEIGHT_LABELS = ["Identity", "Mass", "Stiffness", "Energy"]
 
 
 def _compute_mac_matrices(
-    modes, refs, M_dense, K_dense, R,
+    modes, refs, M, K, R,
     t_idx, weightings: list[str],
     use_rigid: bool, f0_energy: float,
     subdomains=None, n_nodes: int = 0,
 ) -> dict:
     """
     Returns dict: label -> MAC matrix (nModes, nRefs).
+    M and K may be sparse or dense — M_t/K_t are sliced keeping sparsity.
     Keys include weighting variants, rigid-removal variants,
     and subdomain-averaged variants (simple model only).
     """
+    import scipy.sparse as sp
     from common.mac_core   import compute_mac
     from common.rigid_body import remove_rigid_body_component
 
-    Phi_t  = modes[t_idx, :]
-    M_t    = M_dense[np.ix_(t_idx, t_idx)]
-    K_t    = K_dense[np.ix_(t_idx, t_idx)]
+    Phi_t = modes[t_idx, :]
+
+    # Slice translational submatrix — keeps sparse if M/K are sparse
+    if sp.issparse(M):
+        M_t = M[t_idx, :][:, t_idx]
+        K_t = K[t_idx, :][:, t_idx]
+    else:
+        M_t = M[np.ix_(t_idx, t_idx)]
+        K_t = K[np.ix_(t_idx, t_idx)]
+
     W_ener = M_t * (2 * np.pi * f0_energy) ** 2 + K_t
 
     all_weights = {"Identity": None, "Mass": M_t, "Stiffness": K_t, "Energy": W_ener}
@@ -120,7 +129,7 @@ def _compute_mac_matrices(
     # Full DOFs — rigid-body removed reference
     refs_proj = None
     if use_rigid and R is not None:
-        refs_proj  = remove_rigid_body_component(refs, M_dense, R)
+        refs_proj  = remove_rigid_body_component(refs, M, R)
         Psi_t_proj = refs_proj[t_idx, :]
         for w_lbl, W in weights.items():
             results[f"{w_lbl} +rigid"] = compute_mac(Phi_t, Psi_t_proj, W)
@@ -351,11 +360,6 @@ def _run_ansa(cfg: dict) -> None:
         print("  Eliminando DOFs de nodos CONM2...")
         space.remove_nodes(conm2_node_ids)
 
-    # Densify en espacio 6-DOF — necesario para rigid-body removal (usa M completa)
-    print("Densificando M y K...")
-    M_dense = _densify(space.M)
-    K_dense = _densify(space.K)
-
     GDof  = space.n_dof
     t_idx = _translational_indices(GDof)
 
@@ -364,7 +368,7 @@ def _run_ansa(cfg: dict) -> None:
 
     print("Calculando matrices MAC...")
     mac_matrices = _compute_mac_matrices(
-        space.modes, space.refs, M_dense, K_dense, space.R, t_idx,
+        space.modes, space.refs, space.M, space.K, space.R, t_idx,
         weightings = cfg["weightings"],
         use_rigid  = cfg["use_rigid"],
         f0_energy  = cfg["f0_energy"],

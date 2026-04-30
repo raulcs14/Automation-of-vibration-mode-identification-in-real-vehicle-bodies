@@ -23,7 +23,7 @@ def build_rigid_body_basis(node_xyz: np.ndarray) -> np.ndarray:
     return R
 
 
-def remove_rigid_body_component(modes: np.ndarray, M: np.ndarray,
+def remove_rigid_body_component(modes: np.ndarray, M,
                                  R: np.ndarray) -> np.ndarray:
     """
     Project out rigid-body contributions using a mass-weighted projector.
@@ -33,13 +33,13 @@ def remove_rigid_body_component(modes: np.ndarray, M: np.ndarray,
 
     Args:
         modes: Mode matrix (GDof, nModes)
-        M: Global mass matrix (GDof, GDof)
+        M: Global mass matrix (GDof, GDof), sparse or dense
         R: Rigid-body basis (GDof, 6)
 
     Returns:
         modes_proj: Projected modes with rigid-body component removed
     """
-    MR    = M @ R                                    # (GDof, 6)
-    G     = R.T @ MR                                 # (6, 6)  Gram matrix
-    alpha = np.linalg.solve(G, R.T @ (M @ modes))   # (6, nVectors)
+    MR    = np.asarray(M @ R)                                    # (GDof, 6)
+    G     = R.T @ MR                                             # (6, 6)  Gram matrix
+    alpha = np.linalg.solve(G, R.T @ np.asarray(M @ modes))     # (6, nVectors)
     return modes - R @ alpha
