@@ -61,7 +61,7 @@ def _ask_int(prompt: str, default: int) -> int:
 
 
 def _ask_yes(prompt: str, default: bool = False) -> bool:
-    yn = "S/n" if default else "s/N"
+    yn = "y/n" if default else "y/N"
     raw = input(f"\n{prompt} [{yn}]: ").strip().lower()
     if raw == "":
         return default
@@ -71,31 +71,6 @@ def _ask_yes(prompt: str, default: bool = False) -> bool:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-def _remove_dofs(keep_mask: np.ndarray, modes, refs, M, K, R) -> tuple:
-    """
-    Apply a boolean DOF keep-mask to modes, refs, M, K and R.
-
-    keep_mask : (nDOF,) boolean array — True = keep this DOF
-    Returns   : (modes, refs, M, K, R) reduced to the kept DOFs.
-    M and K can be sparse or dense; refs can be 1-D or 2-D.
-    """
-    idx = np.where(keep_mask)[0]
-
-    modes_r = modes[idx, :]
-    refs_r  = refs[idx, :] if refs.ndim == 2 else refs[idx]
-
-    if hasattr(M, "toarray"):
-        import scipy.sparse as _sp
-        M_r = M[idx, :][:, idx]
-        K_r = K[idx, :][:, idx]
-    else:
-        M_r = M[np.ix_(idx, idx)]
-        K_r = K[np.ix_(idx, idx)]
-
-    R_r = R[idx, :]
-
-    return modes_r, refs_r, M_r, K_r, R_r
 
 
 def _select_top_from_matrices(mac_matrices: dict, n: int) -> np.ndarray:
@@ -358,31 +333,38 @@ def _run_ansa(cfg: dict) -> None:
     dyn  = run_modal_analysis(variant=variant)
     stat = run_static_model(variant=variant)
 
-    modes = dyn["modes"]
-    freq  = dyn["freq"]
-    R     = dyn["R"]
-    refs  = stat["ref_moves_raw"]   # (GDof, nRefs)
+    from common.dof_reduction import DofSpace
 
-    keep_mask = dyn.get("conm2_keep_mask")
-    if keep_mask is not None and cfg.get("remove_conm2", True):
-        print("Eliminando DOFs de nodos CONM2...")
-        modes, refs, dyn["M"], dyn["K"], R = _remove_dofs(
-            keep_mask, modes, refs, dyn["M"], dyn["K"], R
-        )
+    space = DofSpace(
+        modes    = dyn["modes"],
+        refs     = stat["ref_moves_raw"],
+        M        = dyn["M"],
+        K        = dyn["K"],
+        R        = dyn["R"],
+        node_ids = dyn["node_ids"],
+        node_xyz = dyn["node_coordinates"],
+    )
 
-    GDof  = modes.shape[0]
+    freq           = dyn["freq"]
+    conm2_node_ids = dyn.get("conm2_node_ids")
+    if conm2_node_ids is not None and cfg.get("remove_conm2", False):
+        print("  Eliminando DOFs de nodos CONM2...")
+        space.remove_nodes(conm2_node_ids)
 
-    print("Densificando M y K (solo DOFs traslacionales)...")
-    M_dense = _densify(dyn["M"])
-    K_dense = _densify(dyn["K"])
+    # Densify en espacio 6-DOF — necesario para rigid-body removal (usa M completa)
+    print("Densificando M y K...")
+    M_dense = _densify(space.M)
+    K_dense = _densify(space.K)
 
+    GDof  = space.n_dof
     t_idx = _translational_indices(GDof)
-    conm2_tag = " (CONM2 removed)" if cfg.get("remove_conm2") else " (CONM2 kept)"
-    title = f"ANSA {variant}{conm2_tag if variant == 'TB' else ''} — Mode identification"
+
+    conm2_tag = " (CONM2 removed)" if cfg.get("remove_conm2") and conm2_node_ids is not None else ""
+    title = f"ANSA {variant}{conm2_tag} — Mode identification"
 
     print("Calculando matrices MAC...")
     mac_matrices = _compute_mac_matrices(
-        modes, refs, M_dense, K_dense, R, t_idx,
+        space.modes, space.refs, M_dense, K_dense, space.R, t_idx,
         weightings = cfg["weightings"],
         use_rigid  = cfg["use_rigid"],
         f0_energy  = cfg["f0_energy"],
@@ -423,7 +405,7 @@ def _interactive_config(model: str) -> dict:
     remove_conm2 = False
     if model == "ansa" and ansa_variant == "TB":
         remove_conm2 = _ask_yes(
-            "Remove CONM2 mass node DOFs before MAC computation?", default=True
+            "¿Eliminar DOFs de nodos con masa añadida (CONM2)?", default=True
         )
 
     # --- Weightings ---
@@ -475,10 +457,10 @@ def _interactive_config(model: str) -> dict:
     if model == "ansa":
         labels = {"BIW": "Body in White (BIW)", "TB": "Trimmed Body (TB)"}
         print(f"  Variante     : {labels.get(ansa_variant, ansa_variant)}")
+        if ansa_variant == "TB":
+            print(f"  Remove CONM2 : {remove_conm2}")
     print(f"  Ponderaciones: {weightings}")
     print(f"  Rigid removal: {use_rigid}")
-    if model == "ansa" and ansa_variant == "TB":
-        print(f"  Remove CONM2 : {remove_conm2}")
     if model == "simple":
         print(f"  Subdomains   : {not no_subdomain}")
         print(f"  Ref cases    : {[rc+1 for rc in ref_cases]}")

@@ -13,8 +13,7 @@ To regenerate, run ansa_model/meta_scripts/export_static_reference.py from META.
 
 from pathlib import Path
 import numpy as np
-from ansa_model.reader import (read_csv, read_h5, keep_mask_from_nodes,
-                                read_f06_biw, read_f06_tb)
+from ansa_model.reader import (read_csv, read_f06_biw)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ANSA_ROOT = _REPO_ROOT / "data" / "ansa_model"
@@ -22,15 +21,8 @@ VARIANTS   = ["BIW", "TB"]
 
 _META_ROOT = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis")
 
-_GETKM_F06 = {
-    "BIW": _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices" / "output" / "000_Header_BIW_getKM.f06",
-    "TB":  _META_ROOT / "TrimmedBody" / "dummycar_TB_matrices"  / "output" / "000_Header_TB_getKM.f06",
-}
-
-_BDF_DIR = {
-    "BIW": _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices",
-    "TB":  _META_ROOT / "TrimmedBody" / "dummycar_TB_matrices",
-}
+_GETKM_F06_BIW = _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices" / "output" / "000_Header_BIW_getKM.f06"
+_BDF_DIR_BIW   = _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices"
 
 REF_NAMES   = ["Torsion reference"]
 SHORT_NAMES = ["Torsion"]
@@ -39,10 +31,11 @@ SHORT_NAMES = ["Torsion"]
 
 def run_static_model(variant: str = "BIW") -> dict:
     """
-    Load ANSA static reference displacement(s) filtered to the same DOF space
-    as run_modal_analysis:
-      BIW: A-set DOFs  (G-set minus SPC/singular nodes)
-      TB:  G-set minus CONM2 nodes
+    Load ANSA static reference displacement(s).
+
+    BIW: filtered to A-set DOFs (same space as run_modal_analysis).
+    TB:  returned in full G-set. Apply dyn["conm2_keep_mask"] via
+         apply_dof_mask() if you want to remove CONM2 DOFs.
 
     Returns a dict with:
       ref_moves_raw : (GDof, nRefs)  reference displacement vectors
@@ -62,20 +55,12 @@ def run_static_model(variant: str = "BIW") -> dict:
 
     ref = read_csv(ref_csv, ensure_2d=True)[:, :len(REF_NAMES)]
 
-    _NAS_EXTS = ("*.bdf", "*.nas", "*.dat", "*.inc")
-    bdf_files = sorted({f for ext in _NAS_EXTS for f in _BDF_DIR[variant].glob(ext)})
-
     if variant == "BIW":
-        f06data       = read_f06_biw(_GETKM_F06["BIW"], bdf_files)
+        _NAS_EXTS = ("*.bdf", "*.nas", "*.dat", "*.inc")
+        bdf_files = sorted({f for ext in _NAS_EXTS for f in _BDF_DIR_BIW.glob(ext)})
+        f06data       = read_f06_biw(_GETKM_F06_BIW, bdf_files)
         aset_dof_mask = f06data["aset_dof_mask"]
         ref = ref[aset_dof_mask, :]
-
-    else:
-        h5data    = read_h5(DATA_DIR / "matrices.h5")
-        f06data   = read_f06_tb(_GETKM_F06["TB"], bdf_files)
-        conm2_ids = f06data["conm2_node_ids"]
-        conm2_keep_mask = keep_mask_from_nodes(conm2_ids, h5data["uset_g"])
-        ref = ref[conm2_keep_mask, :]
 
     print(f"  Reference shape: {ref.shape}  ({len(REF_NAMES)} reference(s): {REF_NAMES})")
     return dict(ref_moves_raw=ref, ref_names=list(REF_NAMES), short_names=list(SHORT_NAMES))

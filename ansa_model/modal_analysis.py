@@ -17,8 +17,9 @@ M/K matrices:
     TB  -> matrices.h5   (node IDs, coords and CONM2 IDs from getKM .f06 + BDF files)
 
 DOF space after loading:
-    BIW: G-set minus SPC/singular nodes = A-set  (22818 DOFs, 3803 nodes)
-    TB:  G-set minus CONM2 nodes                 (22968 DOFs, 3828 nodes)
+    BIW: A-set (G-set minus SPC/singular nodes)  — modes/K/M already filtered
+    TB:  full G-set                              — conm2_keep_mask returned for
+                                                   optional CONM2 DOF removal
 
 To regenerate the CSVs, run export_modes.py from inside META post-processor.
 """
@@ -27,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import scipy.sparse as sp
 from ansa_model.reader import (read_csv, read_frequencies_f06, read_h5,
-                                keep_mask_from_nodes, read_f06_biw, read_f06_tb)
+                                read_f06_biw, read_f06_tb)
 from common.rigid_body import build_rigid_body_basis
 
 # ---------------------------------------------------------------------------
@@ -63,10 +64,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     """
     Load ANSA modal results and return a dict compatible with the pipeline.
 
-    All arrays share the same DOF space (GDof rows):
-      BIW: A-set DOFs  (G-set minus SPC/singular nodes)
-      TB:  G-set minus CONM2 nodes
-
+    Returns a dict with:
       modes            : (GDof, nModes)   elastic modes (rigid skipped if skip_rigid)
       freq             : (nModes,)        frequencies [Hz]
       K                : (GDof, GDof)     sparse stiffness matrix
@@ -74,6 +72,10 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
       R                : (GDof, 6)        rigid-body basis
       node_coordinates : (nNodes, 3)      coordinates matching DOF space
       node_ids         : (nNodes,)        GRID IDs matching DOF space
+      conm2_keep_mask  : (GDof,) bool | None
+                         TB only: True = keep this DOF (CONM2 DOFs are False).
+                         Apply with apply_dof_mask() to remove CONM2 nodes.
+                         None for BIW (already at A-set, no CONM2).
 
     variant: "BIW" | "TB"
     """
@@ -120,6 +122,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     # --- Load K, M and build DOF mask ----------------------------------------
     _NAS_EXTS = ("*.bdf", "*.nas", "*.dat", "*.inc")
     bdf_files = sorted({f for ext in _NAS_EXTS for f in _BDF_DIR[variant].glob(ext)})
+    conm2_ids = None
 
     if variant == "BIW":
         # BIW: K/M are A-set sized. Filter modes from G-set to A-set.
@@ -137,7 +140,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
         modes_all = modes_all[aset_dof_mask, :]
 
     else:
-        # TB: K/M from H5 are G-set sized. Remove CONM2 DOFs from K, M and modes.
+        # TB: K/M from H5 are G-set sized. Return full G-set + mask for optional removal.
         h5_file = DATA_DIR / "matrices.h5"
         if not h5_file.exists():
             raise FileNotFoundError(
@@ -152,20 +155,10 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
         f06data   = read_f06_tb(_GETKM_F06["TB"], bdf_files)
         conm2_ids = f06data["conm2_node_ids"]
 
-        conm2_keep_mask = keep_mask_from_nodes(conm2_ids, h5data["uset_g"])
-        n_removed = int(np.sum(~conm2_keep_mask))
-        print(f"  CONM2 nodes  : {len(conm2_ids)}  ({n_removed} DOFs removed)")
+        print(f"  CONM2 nodes  : {len(conm2_ids)}  (removable via conm2_node_ids)")
 
-        # Apply mask to K, M and modes — all consistently in post-CONM2 G-set
-        idx   = np.where(conm2_keep_mask)[0]
-        K     = K[np.ix_(idx, idx)]
-        M     = M[np.ix_(idx, idx)]
-        modes_all = modes_all[conm2_keep_mask, :]
-
-        # node_ids and node_xyz for the kept G-set nodes (one bool per node)
-        node_mask = conm2_keep_mask[::6]
-        node_ids  = h5data["node_ids"][node_mask]
-        node_xyz  = h5data["node_xyz"][node_mask]
+        node_ids = h5data["node_ids"]
+        node_xyz = h5data["node_xyz"]
 
     # --- Select elastic modes -------------------------------------------------
     if skip_rigid:
@@ -187,4 +180,5 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
         R                = R,
         node_coordinates = node_xyz,
         node_ids         = node_ids,
+        conm2_node_ids   = conm2_ids if variant == "TB" else None,
     )
