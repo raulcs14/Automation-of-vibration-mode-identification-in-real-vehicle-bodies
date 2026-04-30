@@ -8,7 +8,6 @@ Outputs (in data/ansa_model/<variant>/):
     modal_trans_results.csv   (nNodes*3, nModes)
     modal_rot_results.csv     (nNodes*3, nModes)
     modal_total_results.csv   (nNodes*6, nModes)  full [trans+rot] interleaved
-    conm2_node_ids.csv        (nCONM2,)           GRID IDs associated to CONM2 elements
 """
 
 import numpy as np
@@ -52,17 +51,6 @@ class ModalAnalysis:
         return sol103
 
 
-def get_conm2_node_ids(model) -> np.ndarray:
-    """Return the GRID IDs of nodes connected to CONM2 elements in the model."""
-    node_ids = set()
-    for elem in model.get_elements('all'):
-        if elem.get_deck_type() == 'CONM2':
-            elem_nodes = elem.get_nodes()
-            if elem_nodes:
-                node_ids.add(elem_nodes[0].id)
-    return np.array(sorted(node_ids), dtype=int)
-
-
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -85,11 +73,6 @@ def main():
     save_csv(trans_mat, OUTPUT_DIR / 'modal_trans_results.csv')
     save_csv(rot_mat,   OUTPUT_DIR / 'modal_rot_results.csv')
     save_csv(total_mat, OUTPUT_DIR / 'modal_total_results.csv')
-
-    if VARIANT == "TB":
-        conm2_ids = get_conm2_node_ids(mod_trans.model)
-        np.savetxt(OUTPUT_DIR / 'conm2_node_ids.csv', conm2_ids, fmt='%d', delimiter=',')
-        print(f"Saved conm2_node_ids.csv  ({len(conm2_ids)} CONM2 nodes)")
 
 
 if __name__ == '__main__':

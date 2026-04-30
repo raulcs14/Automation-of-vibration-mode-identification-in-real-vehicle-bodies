@@ -29,7 +29,7 @@ from test_helpers               import ask_yn, ask_weighting, ask_variant
 F0_ENERGY = 40.0
 
 
-N_TOP_MODES = 30
+N_TOP_MODES = 20
 
 
 def top_modes(mac: np.ndarray, n: int = N_TOP_MODES) -> np.ndarray:
@@ -57,12 +57,12 @@ def main():
     dyn  = run_modal_analysis(variant)
     stat = run_static_model(variant)
 
-    modes = dyn["modes"]          # (GDof, nModes)
+    modes = dyn["modes"]          # (ADof, nModes)
     freq  = dyn["freq"]
     K     = dyn["K"]
     M     = dyn["M"]
     R     = dyn["R"]
-    ref   = stat["ref_moves_raw"] # (GDof, nRefs)
+    ref   = stat["ref_moves_raw"] # (ADof, nRefs)
     GDof  = modes.shape[0]
 
     # --- Interactive choices ------------------------------------------------
