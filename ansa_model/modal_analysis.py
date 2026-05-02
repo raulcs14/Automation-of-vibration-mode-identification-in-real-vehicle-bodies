@@ -17,9 +17,17 @@ M/K matrices:
     TB  -> matrices.h5   (node IDs, coords and CONM2 IDs from getKM .f06 + BDF files)
 
 DOF space after loading:
-    BIW: A-set (G-set minus SPC/singular nodes)  — modes/K/M already filtered
-    TB:  full G-set                              — conm2_keep_mask returned for
-                                                   optional CONM2 DOF removal
+    Nastran organises nodes into displacement sets.  The two relevant here are:
+      G-set — every node in the model (coordinates exported to CSV).
+      A-set — the free structural nodes whose DOFs enter K and M.  Nodes with
+              SPC boundary conditions and nodes flagged in the GRID POINT
+              SINGULARITY TABLE are present in the G-set but absent from the
+              A-set; they are excluded from all matrix operations.
+
+    BIW: eigenvectors are filtered from G-set down to A-set on load;
+         K and M are already A-set sized (exported by the getKM macro).
+    TB:  K, M and eigenvectors are returned in the full G-set;
+         conm2_node_ids is provided for optional CONM2 DOF removal.
 
 To regenerate the CSVs, run export_modes.py from inside META post-processor.
 """
@@ -125,18 +133,22 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     conm2_ids = None
 
     if variant == "BIW":
-        # BIW: K/M are A-set sized. Filter modes from G-set to A-set.
+        # The eigenvector CSV is exported over the full G-set (all model nodes).
+        # K and M, however, are assembled only over the A-set — the subset of
+        # nodes whose DOFs are free to move (G-set minus SPC-constrained nodes
+        # and nodes flagged in the GRID POINT SINGULARITY TABLE).  We must
+        # filter the mode shapes down to the same A-set before any analysis.
         K = sp.load_npz(DATA_DIR / "K.npz")
         M = sp.load_npz(DATA_DIR / "M.npz")
 
         f06data       = read_f06_biw(_GETKM_F06["BIW"], bdf_files)
-        node_ids      = f06data["node_ids"]      # A-set GRID IDs (3803,)
-        node_xyz      = f06data["node_xyz"]      # A-set coords   (3803, 3)
-        aset_dof_mask = f06data["aset_dof_mask"] # G-set -> A-set bool mask
+        node_ids      = f06data["node_ids"]       # A-set GRID IDs
+        node_xyz      = f06data["node_xyz"]        # A-set coordinates
+        aset_dof_mask = f06data["aset_dof_mask"]   # boolean mask: G-set DOFs -> A-set DOFs
 
         n_excl = int(np.sum(~aset_dof_mask))
         print(f"  G-set DOFs   : {GDof_csv}  ->  A-set DOFs: {int(np.sum(aset_dof_mask))}"
-              f"  ({n_excl} excluded)")
+              f"  ({n_excl} excluded: SPC-constrained or singular nodes)")
         modes_all = modes_all[aset_dof_mask, :]
 
     else:

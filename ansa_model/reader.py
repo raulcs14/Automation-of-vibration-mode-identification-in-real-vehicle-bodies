@@ -185,9 +185,16 @@ def read_f06_aset_gset_nodes(f06_path: Path) -> tuple[np.ndarray, np.ndarray]:
 def aset_dof_mask_from_gset(aset_node_ids: np.ndarray,
                              gset_node_ids: np.ndarray) -> np.ndarray:
     """
-    Build a boolean mask of length len(gset_node_ids)*6 that is True for
-    DOFs belonging to aset_node_ids. Assumes 6 DOFs per node, nodes in
-    ascending ID order (as returned by read_f06_aset_gset_nodes).
+    Build a boolean DOF-level keep-mask aligned with the G-set.
+
+    Returns a 1-D bool array of length len(gset_node_ids)*6 where each entry
+    is True if the corresponding DOF belongs to a node in the A-set (i.e. a
+    free structural node that contributes to K and M).  Nodes present in the
+    G-set but absent from the A-set are SPC-constrained or flagged as singular
+    by Nastran; their DOFs must be excluded before any matrix operation.
+
+    Assumes 6 DOFs per node (Ux Uy Uz Rx Ry Rz) and nodes sorted in ascending
+    ID order, as returned by read_f06_aset_gset_nodes.
     """
     node_in_aset = np.isin(gset_node_ids, aset_node_ids)
     return np.repeat(node_in_aset, 6)
