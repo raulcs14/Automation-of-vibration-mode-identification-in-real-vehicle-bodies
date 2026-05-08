@@ -74,31 +74,42 @@ def _load_simple():
 def _load_ansa(variant: str, remove_conm2: bool):
     from ansa_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
     from ansa_model.static_model   import run_static_model
-    from main                      import _remove_dofs
+    from common.dof_reduction      import DofSpace
 
     dyn  = run_modal_analysis(variant=variant)
     stat = run_static_model(variant=variant)
 
-    modes = dyn["modes"]
-    ref   = stat["ref_moves_raw"]
-    M     = dyn["M"]
-    K     = dyn["K"]
-    R     = dyn["R"]
+    space = DofSpace(
+        modes    = dyn["modes"],
+        refs     = stat["ref_moves_raw"],
+        M        = dyn["M"],
+        K        = dyn["K"],
+        R        = dyn["R"],
+        node_ids = dyn["node_ids"],
+        node_xyz = dyn["node_coordinates"],
+    )
 
-    keep_mask = dyn.get("conm2_keep_mask")
-    if keep_mask is not None and remove_conm2:
+    conm2_node_ids = dyn.get("conm2_node_ids")
+    if conm2_node_ids is not None and remove_conm2:
         print("Eliminando DOFs de nodos CONM2...")
-        modes, ref, M, K, R = _remove_dofs(keep_mask, modes, ref, M, K, R)
+        space.remove_nodes(conm2_node_ids)
+
+    subdomains = None
+    if variant == "BIW":
+        from ansa_model.subdomains import build_biw_subdomains
+        subdomains = build_biw_subdomains(space.node_ids, space.node_xyz)
+        print(f"  Subdominios BIW: {len(subdomains)} zonas")
 
     return dict(
-        modes       = modes,
+        modes       = space.modes,
         freq        = dyn["freq"],
-        M           = M,
-        K           = K,
-        R           = R,
-        ref         = ref,
+        M           = space.M,
+        K           = space.K,
+        R           = space.R,
+        ref         = space.refs,
         ref_names   = stat["ref_names"],
-        subdomains  = None,
+        subdomains  = subdomains,
+        n_nodes     = space.n_nodes,
         mode_offset = N_RIGID_BODY_MODES,
     )
 
@@ -149,7 +160,7 @@ def main():
     subdomains  = data["subdomains"]
     mode_offset = data["mode_offset"]
     GDof        = modes.shape[0]
-    n_nodes     = GDof // 6
+    n_nodes     = data.get("n_nodes", GDof // 6)
 
     # --- Interactive choices ------------------------------------------------
     use_rigid = ask_yn("Remove rigid-body component from reference shapes?")
@@ -158,10 +169,12 @@ def main():
     if use_rigid:
         Psi = remove_rigid_body_component(ref, M, R)
 
+        import scipy.sparse as _sp
         t_idx_check = translational_dof_indices(GDof)
-        M_t_check   = M[np.ix_(t_idx_check, t_idx_check)]
-        e_before = np.einsum("ij,ij->j", ref[t_idx_check, :], M_t_check @ ref[t_idx_check, :])
-        e_after  = np.einsum("ij,ij->j", Psi[t_idx_check, :], M_t_check @ Psi[t_idx_check, :])
+        M_t_check   = (M[t_idx_check, :][:, t_idx_check] if _sp.issparse(M)
+                       else M[np.ix_(t_idx_check, t_idx_check)])
+        e_before = np.einsum("ij,ij->j", ref[t_idx_check, :], densify(M_t_check) @ ref[t_idx_check, :])
+        e_after  = np.einsum("ij,ij->j", Psi[t_idx_check, :], densify(M_t_check) @ Psi[t_idx_check, :])
         lost_pct = 100.0 * (e_before - e_after) / np.where(e_before > 0, e_before, 1.0)
 
         print("\nEnergy lost after rigid-body removal:")
@@ -185,11 +198,16 @@ def main():
     title = " | ".join(title_parts)
 
     # --- Translational extraction -------------------------------------------
+    import scipy.sparse as _sp
     t_idx = translational_dof_indices(GDof)
     Phi_t = modes[t_idx, :]
     Psi_t = Psi[t_idx, :]
-    M_t   = M[np.ix_(t_idx, t_idx)]
-    K_t   = K[np.ix_(t_idx, t_idx)]
+    if _sp.issparse(M):
+        M_t = M[t_idx, :][:, t_idx]
+        K_t = K[t_idx, :][:, t_idx]
+    else:
+        M_t = M[np.ix_(t_idx, t_idx)]
+        K_t = K[np.ix_(t_idx, t_idx)]
 
     # --- Average zones (simple model only) ----------------------------------
     if use_zones:

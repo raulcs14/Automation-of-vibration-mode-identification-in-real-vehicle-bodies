@@ -4,6 +4,7 @@ Equivalent to averageZones.m, averageModeSubdomain.m, reduce_MK_by_subdomains.m
 """
 
 import numpy as np
+import scipy.sparse as sp
 from typing import Dict, List, Tuple
 
 
@@ -77,16 +78,26 @@ def reduce_mk_by_subdomains(M_t: np.ndarray, K_t: np.ndarray,
     n_dof_full = 3 * n_nodes
     n_dof_red  = 3 * n_zones
 
-    T = np.zeros((n_dof_full, n_dof_red))
-
+    # Build T as sparse CSC — avoids densifying large M_t/K_t for BIW-scale models
+    rows, cols, vals = [], [], []
     for s, name in enumerate(zone_names):
         nodes_s = np.asarray(subdomains[name])
         ns = len(nodes_s)
         for d in range(3):   # Ux, Uy, Uz blocks
             red_dof   = s * 3 + d
             full_dofs = nodes_s + d * n_nodes   # block layout
-            T[full_dofs, red_dof] = 1.0 / ns
+            rows.extend(full_dofs.tolist())
+            cols.extend([red_dof] * len(nodes_s))
+            vals.extend([1.0 / ns] * len(nodes_s))
 
-    Mr = T.T @ M_t @ T
-    Kr = T.T @ K_t @ T
-    return Mr, Kr, T
+    T_sp = sp.csc_matrix((vals, (rows, cols)), shape=(n_dof_full, n_dof_red))
+
+    if sp.issparse(M_t):
+        Mr = (T_sp.T @ M_t @ T_sp).toarray()
+        Kr = (T_sp.T @ K_t @ T_sp).toarray()
+    else:
+        T = T_sp.toarray()
+        Mr = T.T @ M_t @ T
+        Kr = T.T @ K_t @ T
+
+    return Mr, Kr, T_sp.toarray()

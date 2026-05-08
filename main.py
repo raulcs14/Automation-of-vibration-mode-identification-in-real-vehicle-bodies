@@ -363,6 +363,15 @@ def _run_ansa(cfg: dict) -> None:
     GDof  = space.n_dof
     t_idx = _translational_indices(GDof)
 
+    # Subdomains (BIW only)
+    subdomains = None
+    n_nodes    = 0
+    if variant == "BIW" and not cfg.get("no_subdomain", False):
+        from ansa_model.subdomains import build_biw_subdomains
+        subdomains = build_biw_subdomains(space.node_ids, space.node_xyz)
+        n_nodes    = space.n_nodes
+        print(f"  Subdominios BIW: {len(subdomains)} zonas")
+
     conm2_tag = " (CONM2 removed)" if cfg.get("remove_conm2") and conm2_node_ids is not None else ""
     title = f"ANSA {variant}{conm2_tag} — Mode identification"
 
@@ -372,6 +381,8 @@ def _run_ansa(cfg: dict) -> None:
         weightings = cfg["weightings"],
         use_rigid  = cfg["use_rigid"],
         f0_energy  = cfg["f0_energy"],
+        subdomains = subdomains,
+        n_nodes    = n_nodes,
     )
 
     idx = _select_top_from_matrices(mac_matrices, cfg["top_modes"])
@@ -422,9 +433,9 @@ def _interactive_config(model: str) -> dict:
     # --- Rigid body removal ---
     use_rigid = _ask_yes("¿Aplicar rigid-body removal a la referencia?", default=True)
 
-    # --- Subdomain (solo simple) ---
+    # --- Subdomain (simple y BIW) ---
     no_subdomain = False
-    if model == "simple":
+    if model == "simple" or (model == "ansa" and ansa_variant == "BIW"):
         no_subdomain = not _ask_yes("¿Usar subdomain averaging?", default=True)
 
     # --- Reference cases (solo simple) ---
@@ -465,8 +476,9 @@ def _interactive_config(model: str) -> dict:
             print(f"  Remove CONM2 : {remove_conm2}")
     print(f"  Ponderaciones: {weightings}")
     print(f"  Rigid removal: {use_rigid}")
-    if model == "simple":
+    if model == "simple" or (model == "ansa" and ansa_variant == "BIW"):
         print(f"  Subdomains   : {not no_subdomain}")
+    if model == "simple":
         print(f"  Ref cases    : {[rc+1 for rc in ref_cases]}")
     print(f"  Top modos    : {top_modes}")
     if "Energy" in weightings:

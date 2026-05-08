@@ -49,10 +49,15 @@ def compute_all_variants(modes, ref, M, K, R, t_idx,
               × {no rigid removal, rigid removed}
               × {full DOFs, subdomain averaged}
     """
+    import scipy.sparse as _sp
     Phi_t = modes[t_idx, :]
     psi_t = ref[t_idx]
-    M_t   = M[np.ix_(t_idx, t_idx)]
-    K_t   = K[np.ix_(t_idx, t_idx)]
+    if _sp.issparse(M):
+        M_t = M[t_idx, :][:, t_idx]
+        K_t = K[t_idx, :][:, t_idx]
+    else:
+        M_t = M[np.ix_(t_idx, t_idx)]
+        K_t = K[np.ix_(t_idx, t_idx)]
     W_ener = M_t * (2 * np.pi * F0_ENERGY) ** 2 + K_t
 
     ref_proj = remove_rigid_body_component(ref.reshape(-1,1), M, R)[:, 0]
