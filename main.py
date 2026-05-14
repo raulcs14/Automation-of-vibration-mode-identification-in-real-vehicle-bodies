@@ -134,7 +134,7 @@ def _compute_mac_matrices(
         for w_lbl, W in weights.items():
             results[f"{w_lbl} +rigid"] = compute_mac(Phi_t, Psi_t_proj, W)
 
-    # Subdomain averaged (simple model only)
+    # Subdomain averaged
     if subdomains is not None:
         from common.subdomain import average_zones, reduce_mk_by_subdomains
 
@@ -363,14 +363,17 @@ def _run_ansa(cfg: dict) -> None:
     GDof  = space.n_dof
     t_idx = _translational_indices(GDof)
 
-    # Subdomains (BIW only)
+    # Subdomains (BIW and TB)
     subdomains = None
     n_nodes    = 0
-    if variant == "BIW" and not cfg.get("no_subdomain", False):
-        from ansa_model.subdomains import build_biw_subdomains
-        subdomains = build_biw_subdomains(space.node_ids, space.node_xyz)
-        n_nodes    = space.n_nodes
-        print(f"  Subdominios BIW: {len(subdomains)} zonas")
+    if not cfg.get("no_subdomain", False):
+        from ansa_model.subdomains import build_subdomains
+        try:
+            subdomains = build_subdomains(variant, space.node_ids, space.node_xyz)
+            n_nodes    = space.n_nodes
+            print(f"  Subdominios {variant}: {len(subdomains)} zonas")
+        except FileNotFoundError as e:
+            print(f"  [subdomains] {e}\n  Continuando sin subdomains.")
 
     conm2_tag = " (CONM2 removed)" if cfg.get("remove_conm2") and conm2_node_ids is not None else ""
     title = f"ANSA {variant}{conm2_tag} — Mode identification"
@@ -433,9 +436,9 @@ def _interactive_config(model: str) -> dict:
     # --- Rigid body removal ---
     use_rigid = _ask_yes("¿Aplicar rigid-body removal a la referencia?", default=True)
 
-    # --- Subdomain (simple y BIW) ---
+    # --- Subdomain (simple, BIW y TB) ---
     no_subdomain = False
-    if model == "simple" or (model == "ansa" and ansa_variant == "BIW"):
+    if model == "simple" or model == "ansa":
         no_subdomain = not _ask_yes("¿Usar subdomain averaging?", default=True)
 
     # --- Reference cases (solo simple) ---
@@ -476,8 +479,7 @@ def _interactive_config(model: str) -> dict:
             print(f"  Remove CONM2 : {remove_conm2}")
     print(f"  Ponderaciones: {weightings}")
     print(f"  Rigid removal: {use_rigid}")
-    if model == "simple" or (model == "ansa" and ansa_variant == "BIW"):
-        print(f"  Subdomains   : {not no_subdomain}")
+    print(f"  Subdomains   : {not no_subdomain}")
     if model == "simple":
         print(f"  Ref cases    : {[rc+1 for rc in ref_cases]}")
     print(f"  Top modos    : {top_modes}")
