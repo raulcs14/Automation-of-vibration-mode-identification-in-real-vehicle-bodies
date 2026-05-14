@@ -100,3 +100,21 @@ def draw_interpolated_frame(ax: plt.Axes, node_coordinates: np.ndarray,
         Pd    = P0 + scale * dglob
 
         ax.plot(Pd[0], Pd[1], Pd[2], color=color, linewidth=linewidth)
+
+
+def plot_deformed(ax, nc, en, u_raw, name,
+                  draw_mesh_fn, set_axes_fn, target_frac=0.08):
+    """Overlay undeformed (dashed) and deformed (solid) mesh with auto-scale."""
+    UX = u_raw[0::6];  UY = u_raw[1::6];  UZ = u_raw[2::6]
+    umax = np.sqrt(UX**2 + UY**2 + UZ**2).max()
+    bbox_diag = np.linalg.norm(nc.max(axis=0) - nc.min(axis=0))
+    scale = np.clip(target_frac * bbox_diag / max(umax, 1e-12), 0.1, 200)
+
+    nc_def = nc + scale * np.column_stack([UX, UY, UZ])
+    draw_mesh_fn(ax, nc,     en, linestyle="k--")
+    draw_mesh_fn(ax, nc_def, en, linestyle="r-")
+    set_axes_fn(ax, np.vstack([nc, nc_def]))
+    ax.set_title(f"{name}\nscale={scale:.1f}  umax={umax:.2e}", fontsize=8)
+    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
+    ax.view_init(elev=20, azim=135)
+    ax.grid(True)

@@ -9,63 +9,8 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from common.utils import translational_dof_indices as _translational_indices, densify as _densify
-
-# ---------------------------------------------------------------------------
-# Interactive menu helpers
-# ---------------------------------------------------------------------------
-
-def _ask(prompt: str, options: list[str], default: int = 0) -> int:
-    """Print numbered options, return 0-based index of chosen option."""
-    print(f"\n{prompt}")
-    for i, opt in enumerate(options):
-        marker = " (default)" if i == default else ""
-        print(f"  [{i+1}] {opt}{marker}")
-    while True:
-        raw = input("  > ").strip()
-        if raw == "":
-            return default
-        if raw.isdigit() and 1 <= int(raw) <= len(options):
-            return int(raw) - 1
-        print(f"  Por favor introduce un número entre 1 y {len(options)}.")
-
-
-def _ask_multi(prompt: str, options: list[str]) -> list[int]:
-    """Allow selecting multiple options by comma-separated numbers, or 0 for all."""
-    print(f"\n{prompt}")
-    for i, opt in enumerate(options):
-        print(f"  [{i+1}] {opt}")
-    print(f"  [0] Todas")
-    while True:
-        raw = input("  > ").strip()
-        if raw == "" or raw == "0":
-            return list(range(len(options)))
-        parts = [p.strip() for p in raw.split(",")]
-        try:
-            indices = [int(p) - 1 for p in parts]
-            if all(0 <= idx < len(options) for idx in indices):
-                return sorted(set(indices))
-        except ValueError:
-            pass
-        print(f"  Introduce números separados por coma (1-{len(options)}) o 0 para todas.")
-
-
-def _ask_int(prompt: str, default: int) -> int:
-    print(f"\n{prompt} (default: {default})")
-    raw = input("  > ").strip()
-    if raw == "":
-        return default
-    if raw.isdigit() and int(raw) > 0:
-        return int(raw)
-    return default
-
-
-def _ask_yes(prompt: str, default: bool = False) -> bool:
-    yn = "y/n" if default else "y/N"
-    raw = input(f"\n{prompt} [{yn}]: ").strip().lower()
-    if raw == "":
-        return default
-    return raw in ("s", "si", "sí", "y", "yes")
+from common.utils        import translational_dof_indices as _translational_indices, densify as _densify
+from common.interaction  import ask as _ask, ask_multi as _ask_multi, ask_int as _ask_int, ask_yes as _ask_yes
 
 
 # ---------------------------------------------------------------------------

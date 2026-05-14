@@ -10,6 +10,7 @@ from simple_model.geometry.chassis import build_chassis_geometry
 from simple_model.fem.stiffness import form_stiffness
 from simple_model.fem.mass import form_mass
 from common.rigid_body import build_rigid_body_basis
+from common.utils      import translational_dof_indices
 import config
 
 DATA_DIR = Path("data/simple_model")
@@ -44,8 +45,7 @@ def run_modal_analysis() -> dict:
     V           = V[:, idx]
 
     # Normalize so max translational component = 1 (matches MATLAB visual scale)
-    # Translational DOFs: indices 0,1,2 of every 6-DOF block
-    trans_rows = np.concatenate([np.arange(d, V.shape[0], 6) for d in range(3)])
+    trans_rows = translational_dof_indices(V.shape[0])
     maxabs     = np.abs(V[trans_rows, :]).max(axis=0, keepdims=True)
     maxabs     = np.where(maxabs < 1e-14, 1.0, maxabs)   # avoid division by zero
     modes_all  = V / maxabs

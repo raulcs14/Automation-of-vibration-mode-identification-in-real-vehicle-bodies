@@ -44,3 +44,8 @@ def compute_mac(Phi: np.ndarray, Psi: np.ndarray,
         mac_T = np.where(denom > 0, cross ** 2 / denom, 0.0)
 
     return mac_T.T   # (nModes, nRefs)
+
+
+def best_mac_per_mode(mac: np.ndarray) -> np.ndarray:
+    """Return (nModes,) array of max MAC value over all references."""
+    return mac.max(axis=1)
