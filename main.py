@@ -250,7 +250,7 @@ def _run_simple(cfg: dict) -> None:
     n_nodes  = GDof // 6
 
     subdomains = None
-    if not cfg["no_subdomain"]:
+    if cfg["subdomain"]:
         geo        = build_chassis_geometry("torsion")
         subdomains = geo.subdomains
 
@@ -305,23 +305,24 @@ def _run_ansa(cfg: dict) -> None:
         print("  Eliminando DOFs de nodos CONM2...")
         space.remove_nodes(conm2_node_ids)
 
-    GDof  = space.n_dof
-    t_idx = _translational_indices(GDof)
+    # Translational slice — always computed after remove_nodes
+    t_idx, *_ = space.translational_slice()
 
-    # Subdomains (BIW and TB)
+    # Subdomains (BIW and TB) — always built after remove_nodes
     subdomains = None
     n_nodes    = 0
-    if not cfg.get("no_subdomain", False):
+    if cfg.get("subdomain", False):
         from ansa_model.subdomains import build_subdomains
         try:
-            subdomains = build_subdomains(variant, space.node_ids, space.node_xyz)
-            n_nodes    = space.n_nodes
+            subdomains_grid = build_subdomains(variant, space.node_ids, space.node_xyz)
+            subdomains      = space.build_subdomains(subdomains_grid)
+            n_nodes         = space.n_nodes
             print(f"  Subdominios {variant}: {len(subdomains)} zonas")
         except FileNotFoundError as e:
             print(f"  [subdomains] {e}\n  Continuando sin subdomains.")
 
     conm2_tag = " (CONM2 removed)" if cfg.get("remove_conm2") and conm2_node_ids is not None else ""
-    title = f"ANSA {variant}{conm2_tag} — Mode identification"
+    title = f"ANSA {variant}{conm2_tag} -- Mode identification"
 
     print("Calculando matrices MAC...")
     mac_matrices = _compute_mac_matrices(
@@ -382,9 +383,9 @@ def _interactive_config(model: str) -> dict:
     use_rigid = _ask_yes("¿Aplicar rigid-body removal a la referencia?", default=True)
 
     # --- Subdomain (simple, BIW y TB) ---
-    no_subdomain = False
+    subdomain = False
     if model == "simple" or model == "ansa":
-        no_subdomain = not _ask_yes("¿Usar subdomain averaging?", default=True)
+        subdomain = _ask_yes("¿Usar subdomain averaging?", default=True)
 
     # --- Reference cases (solo simple) ---
     ref_cases = list(range(len(SIMPLE_REF_NAMES)))
@@ -424,7 +425,7 @@ def _interactive_config(model: str) -> dict:
             print(f"  Remove CONM2 : {remove_conm2}")
     print(f"  Ponderaciones: {weightings}")
     print(f"  Rigid removal: {use_rigid}")
-    print(f"  Subdomains   : {not no_subdomain}")
+    print(f"  Subdomains   : {subdomain}")
     if model == "simple":
         print(f"  Ref cases    : {[rc+1 for rc in ref_cases]}")
     print(f"  Top modos    : {top_modes}")
@@ -436,7 +437,7 @@ def _interactive_config(model: str) -> dict:
     return dict(
         weightings   = weightings,
         use_rigid    = use_rigid,
-        no_subdomain = no_subdomain,
+        subdomain    = subdomain,
         ref_cases    = ref_cases,
         top_modes    = top_modes,
         f0_energy    = f0_energy,

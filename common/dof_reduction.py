@@ -25,6 +25,7 @@ Usage
 
 import numpy as np
 import scipy.sparse as sp
+from common.utils import translational_dof_indices
 
 
 class DofSpace:
@@ -87,10 +88,11 @@ class DofSpace:
         """
         node_ids_to_remove = np.asarray(node_ids_to_remove, dtype=int)
         keep_mask = ~np.isin(self.dof_node_ids, node_ids_to_remove)
-        n_removed = int(np.sum(~keep_mask))
+        n_removed_dofs   = int(np.sum(~keep_mask))
+        n_removed_nodes  = n_removed_dofs // self.dofs_per_node
         self._apply_dof_mask(keep_mask)
-        print(f"  [DofSpace] remove_nodes: {len(node_ids_to_remove)} nodes"
-              f" -> {n_removed} DOFs removed  ({self.n_dof} DOFs remaining)")
+        print(f"  [DofSpace] remove_nodes: {n_removed_nodes} nodes removed"
+              f" -> {n_removed_dofs} DOFs removed  ({self.n_dof} DOFs remaining)")
         return self
 
     def keep_nodes(self, node_ids_to_keep) -> "DofSpace":
@@ -182,3 +184,58 @@ class DofSpace:
             )
         if mask.dtype != bool:
             raise TypeError(f"Mask must be boolean, got {mask.dtype}")
+
+    # ------------------------------------------------------------------
+    # Safe derived views — always consistent with current space state
+    # ------------------------------------------------------------------
+
+    def translational_slice(self):
+        """
+        Return translational-only views of all arrays, computed from the
+        current DOF space.  Always call this after any remove_nodes() calls.
+
+        Requires dofs_per_node == 6 (raises if already reduced).
+
+        Returns
+        -------
+        t_idx   : (3*n_nodes,)       DOF indices for Ux/Uy/Uz
+        modes_t : (3*n_nodes, nModes)
+        refs_t  : (3*n_nodes, nRefs)
+        M_t     : (3*n_nodes, 3*n_nodes) sparse or dense
+        K_t     : (3*n_nodes, 3*n_nodes) sparse or dense
+        """
+        if self.dofs_per_node != 6:
+            raise RuntimeError(
+                "translational_slice() requires dofs_per_node == 6. "
+                "Call it before keep_dof_components()."
+            )
+        t_idx = translational_dof_indices(self.n_dof)
+        modes_t = self.modes[t_idx, :]
+        refs_t  = self.refs[t_idx, :] if self.refs.ndim == 2 else self.refs[t_idx]
+        if sp.issparse(self.M):
+            M_t = self.M[t_idx, :][:, t_idx]
+            K_t = self.K[t_idx, :][:, t_idx]
+        else:
+            M_t = self.M[np.ix_(t_idx, t_idx)]
+            K_t = self.K[np.ix_(t_idx, t_idx)]
+        return t_idx, modes_t, refs_t, M_t, K_t
+
+    def build_subdomains(self, subdomains_grid: dict) -> dict:
+        """
+        Convert a subdomain dict keyed by Nastran GRID IDs to positional
+        indices into the current node_ids array.
+
+        Always call this after remove_nodes() so the indices match the
+        post-reduction node_ids.  GRID IDs absent from the current space
+        (e.g. removed CONM2 nodes) are silently dropped.
+
+        Parameters
+        ----------
+        subdomains_grid : dict  {zone_name: [grid_id, ...]}
+
+        Returns
+        -------
+        dict  {zone_name: [positional_index, ...]}
+        """
+        from ansa_model.subdomains import grid_ids_to_node_indices
+        return grid_ids_to_node_indices(subdomains_grid, self.node_ids)
