@@ -46,21 +46,24 @@ _REPO_ROOT  = Path(__file__).resolve().parents[1]
 _SEAT_ROOT  = _REPO_ROOT / "data" / "seat_model"
 VARIANTS    = ["BIW", "TB"]
 
-import sys as _sys
-_meta_scripts_dir = Path(__file__).resolve().parent / "meta_scripts"
-if str(_meta_scripts_dir) not in _sys.path:
-    _sys.path.insert(0, str(_meta_scripts_dir))
-try:
-    from config import _INPUTS as _CFG_INPUTS
-except ImportError:
-    raise FileNotFoundError(
-        "ansa_model/meta_scripts/config.py not found.\n"
-        "Copy ansa_model/meta_scripts/config.py.example to config.py and fill in your paths."
-    )
+_META_ROOT = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis")
 
-_F06_FILES = {v: _CFG_INPUTS[v]["modal_op2"].with_suffix(".f06") for v in _CFG_INPUTS}
-_GETKM_F06 = {v: _CFG_INPUTS[v]["getkm_f06"]                    for v in _CFG_INPUTS}
-_BDF_DIR   = {v: _CFG_INPUTS[v]["bdf_dir"]                      for v in _CFG_INPUTS}
+_F06_FILES = {
+    "BIW": _META_ROOT / "BodyInWhite" / "dummycar_BIW_modal" / "output" / "000_Header_BIW_modal.f06",
+    "TB":  _SEAT_ROOT / "TB" / "ansa" / "modal" / "000_Header_TB_modal_run.f06",
+}
+
+# getKM .f06 — source of A-set node IDs (both variants)
+_GETKM_F06 = {
+    "BIW": _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices" / "output" / "000_Header_BIW_getKM.f06",
+    "TB":  _SEAT_ROOT / "TB" / "ansa" / "matrices" / "000_Header_TB_getKM.f06",
+}
+
+# Directories containing the BDF includes (.bdf/.nas files with GRID cards)
+_BDF_DIR = {
+    "BIW": _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices",
+    "TB":  Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Raul\TB\dummycar_TB_matrices"),
+}
 
 N_RIGID_BODY_MODES = 6
 
@@ -154,7 +157,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
         if not h5_file.exists():
             raise FileNotFoundError(
                 f"{h5_file} not found.\n"
-                f"Copy the Nastran H5 file to data/ansa_model/{variant}/matrices.h5\n"
+                f"Copy the Nastran H5 file to data/seat_model/{variant}/meta/matrices/matrices.h5\n"
                 f"or run ansa_model/meta_scripts/export_matrices.py with VARIANT='{variant}'."
             )
         h5data = read_h5(h5_file)

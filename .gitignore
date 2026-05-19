@@ -7,16 +7,17 @@ venv/
 env/
 
 # Data files (generated / confidential — never commit)
-data/
-*.csv
-*.op2
-*.h5
-*.f06
-*.npz
-*.mat
+# Ignore all content inside data/ but keep folder structure via .gitkeep
+data/**
+!data/**/
+!data/**/.gitkeep
 
 # META debug / reference scripts
 ansa_model/meta_scripts/debug_*.py
+
+# Local paths configs (each user has their own)
+epilysis_runner/config/paths.py
+ansa_model/meta_scripts/config.py
 
 # IDE
 .vscode/

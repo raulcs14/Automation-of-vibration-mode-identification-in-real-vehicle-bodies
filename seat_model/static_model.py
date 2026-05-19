@@ -19,20 +19,10 @@ _REPO_ROOT  = Path(__file__).resolve().parents[1]
 _SEAT_ROOT  = _REPO_ROOT / "data" / "seat_model"
 VARIANTS    = ["BIW", "TB"]
 
-import sys as _sys
-_meta_scripts_dir = Path(__file__).resolve().parent / "meta_scripts"
-if str(_meta_scripts_dir) not in _sys.path:
-    _sys.path.insert(0, str(_meta_scripts_dir))
-try:
-    from config import _INPUTS as _CFG_INPUTS
-except ImportError:
-    raise FileNotFoundError(
-        "ansa_model/meta_scripts/config.py not found.\n"
-        "Copy ansa_model/meta_scripts/config.py.example to config.py and fill in your paths."
-    )
+_META_ROOT = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis")
 
-_GETKM_F06_BIW = _CFG_INPUTS["BIW"]["getkm_f06"]
-_BDF_DIR_BIW   = _CFG_INPUTS["BIW"]["bdf_dir"]
+_GETKM_F06_BIW = _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices" / "output" / "000_Header_BIW_getKM.f06"
+_BDF_DIR_BIW   = _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices"
 
 REF_NAMES   = ["Torsion reference"]
 SHORT_NAMES = ["Torsion"]

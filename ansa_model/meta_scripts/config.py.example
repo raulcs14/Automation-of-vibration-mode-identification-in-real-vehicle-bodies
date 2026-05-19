@@ -1,21 +1,40 @@
 """
 Paths configuration for META export scripts and pipeline readers.
 
-Local paths — NOT committed to git (see .gitignore).
-Copy config.py.example to config.py and fill in your paths.
+Copy this file to config.py and fill in your local paths.
+config.py is gitignored so each user keeps their own copy.
+
+Usage:
+    cp ansa_model/meta_scripts/config.py.example ansa_model/meta_scripts/config.py
+    # then edit config.py with your local paths
+
+VARIANT selects which model to export:
+    "BIW" — dummycar Body in White (no lumped masses)
+    "TB"  — dummycar Trimmed Body (with lumped masses)
 """
 
 from pathlib import Path
 
-VARIANT = "TB"
+VARIANT = "TB"   # <-- change to "BIW" when exporting the Body in White
 
-BIW_WORKSPACE = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis\BodyInWhite")
-TB_WORKSPACE  = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Raul\TB")
+# --- External workspace paths (each user fills in their own) ------------------
 
+# Folder containing the BIW analysis subfolders (dummycar_BIW_modal, etc.)
+BIW_WORKSPACE = Path(r"C:\path\to\your\META\workspace\BodyInWhite")
+
+# Folder containing the TB analysis subfolders (dummycar_TB_modal, etc.)
+# Only needed for BIW variant (TB inputs come from the repo's data/seat_model/)
+TB_WORKSPACE  = Path(r"C:\path\to\your\META\workspace\TrimmedBody")
+
+# --- Repo-relative paths (no need to change) ----------------------------------
 _REPO_ROOT  = Path(__file__).resolve().parents[3]
 _SEAT_ROOT  = _REPO_ROOT / "data" / "seat_model"
 
 _BIW_WS = BIW_WORKSPACE
+
+# ---------------------------------------------------------------------------
+# Input files per variant
+# ---------------------------------------------------------------------------
 
 _INPUTS = {
     "BIW": {
@@ -25,16 +44,21 @@ _INPUTS = {
         "static_op2":   _BIW_WS / "dummycar_BIW_staticReference"  / "output" / "000_Header_BIW.op2",
         "matrices_K":   _BIW_WS / "dummycar_BIW_matrices"         / "output" / "K.npz",
         "matrices_M":   _BIW_WS / "dummycar_BIW_matrices"         / "output" / "M.npz",
+        # .f06 from getKM run — used to extract A-set node IDs
         "getkm_f06":    _BIW_WS / "dummycar_BIW_matrices"         / "output" / "000_Header_BIW_getKM.f06",
+        # Folder containing BDF/NAS includes (GRID cards)
         "bdf_dir":      _BIW_WS / "dummycar_BIW_matrices",
     },
     "TB": {
+        # .dat and BDF includes live in the repo under data/seat_model/TB/ansa/*/input/
         "modal_dat":    _SEAT_ROOT / "TB" / "ansa" / "modal"    / "input"  / "000_Header_TB_modal.dat",
         "modal_op2":    _SEAT_ROOT / "TB" / "ansa" / "modal"    / "output" / "000_Header_TB_modal_run.op2",
         "static_dat":   _SEAT_ROOT / "TB" / "ansa" / "static"   / "input"  / "000_Header_TB_static_reference.dat",
         "static_op2":   _SEAT_ROOT / "TB" / "ansa" / "static"   / "output" / "000_Header_TB_static_reference_run.op2",
         "matrices_h5":  _SEAT_ROOT / "TB" / "ansa" / "matrices" / "output" / "000_Header_TB_getKM.h5",
+        # .f06 from getKM run — used to extract A-set node IDs
         "getkm_f06":    _SEAT_ROOT / "TB" / "ansa" / "matrices" / "output" / "000_Header_TB_getKM.f06",
+        # Folder containing BDF/NAS includes (GRID cards)
         "bdf_dir":      _SEAT_ROOT / "TB" / "ansa" / "matrices" / "input",
     },
 }

@@ -36,15 +36,12 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-try:
-    from config import _INPUTS as _CFG_INPUTS
-except ImportError:
-    raise FileNotFoundError(
-        "ansa_model/meta_scripts/config.py not found.\n"
-        "Copy config.py.example to config.py and fill in your paths."
-    )
-
-_F06_PATHS = {v: _CFG_INPUTS[v]["getkm_f06"] for v in _CFG_INPUTS}
+_F06_PATHS = {
+    "BIW": Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis"
+                r"\BodyInWhite\dummycar_BIW_matrices\output\000_Header_BIW_getKM.f06"),
+    "TB":  Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis"
+                r"\TrimmedBody\dummycar_TB_matrices\output\000_Header_TB_getKM.f06"),
+}
 
 # ---------------------------------------------------------------------------
 # Parser
@@ -162,7 +159,7 @@ def main(variant: str | None = None):
         raise ValueError(f"variant must be one of {list(_F06_PATHS)}, got '{variant}'")
 
     f06_path   = _F06_PATHS[variant]
-    output_dir = _REPO_ROOT / "data" / "seat_model" / variant / "meta"
+    output_dir = _REPO_ROOT / "data" / "ansa_model" / variant
 
     print(f"Variant : {variant}")
     print(f"Parsing : {f06_path}")
