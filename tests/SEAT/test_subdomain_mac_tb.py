@@ -24,9 +24,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-from ansa_model.modal_analysis  import run_modal_analysis, N_RIGID_BODY_MODES
-from ansa_model.static_model    import run_static_model, REF_NAMES
-from ansa_model.subdomains      import build_biw_subdomains
+from seat_model.modal_analysis  import run_modal_analysis, N_RIGID_BODY_MODES
+from seat_model.static_model    import run_static_model, REF_NAMES
+from seat_model.subdomains      import build_biw_subdomains
 from common.dof_reduction       import DofSpace
 from common.subdomain           import average_zones, reduce_mk_by_subdomains
 from common.mac_core            import compute_mac

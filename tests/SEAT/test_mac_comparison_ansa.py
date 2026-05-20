@@ -25,8 +25,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-from ansa_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
-from ansa_model.static_model    import run_static_model, REF_NAMES
+from seat_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
+from seat_model.static_model    import run_static_model, REF_NAMES
 from common.mac_core            import compute_mac
 from common.rigid_body          import remove_rigid_body_component
 from common.utils               import translational_dof_indices, densify

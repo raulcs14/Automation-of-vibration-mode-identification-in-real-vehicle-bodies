@@ -15,8 +15,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-from ansa_model.modal_analysis import run_modal_analysis
-from ansa_model.subdomains     import build_subdomains
+from seat_model.modal_analysis import run_modal_analysis
+from seat_model.subdomains     import build_subdomains
 
 
 # ---------------------------------------------------------------------------

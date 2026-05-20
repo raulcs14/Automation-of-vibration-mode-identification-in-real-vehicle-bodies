@@ -25,7 +25,6 @@ To regenerate the CSVs, run seat_model/meta_runner/scripts/export_modes.py from 
 
 from pathlib import Path
 import numpy as np
-import scipy.sparse as sp
 from seat_model.reader import (read_csv, read_frequencies_f06, read_h5)
 from common.rigid_body import build_rigid_body_basis
 
@@ -39,12 +38,6 @@ VARIANTS    = ["BIW", "TB"]
 _F06_FILES = {
     "BIW": _SEAT_ROOT / "BIW" / "ansa" / "modal"    / "output" / "000_Header_BIW_modal_run.f06",
     "TB":  _SEAT_ROOT / "TB"  / "ansa" / "modal"    / "output" / "000_Header_TB_modal_run.f06",
-}
-
-# getKM .f06 — source of A-set node IDs (both variants)
-_GETKM_F06 = {
-    "BIW": _SEAT_ROOT / "BIW" / "ansa" / "matrices" / "output" / "000_Header_BIW_getKM.f06",
-    "TB":  _SEAT_ROOT / "TB"  / "ansa" / "matrices" / "output" / "000_Header_TB_getKM.f06",
 }
 
 # Directories containing the BDF includes (.bdf/.nas files with GRID cards)
@@ -68,10 +61,10 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
       R                : (GDof, 6)        rigid-body basis
       node_coordinates : (nNodes, 3)      coordinates matching DOF space
       node_ids         : (nNodes,)        GRID IDs matching DOF space
-      conm2_keep_mask  : (GDof,) bool | None
-                         TB only: True = keep this DOF (CONM2 DOFs are False).
-                         Apply with apply_dof_mask() to remove CONM2 nodes.
-                         None for BIW (already at A-set, no CONM2).
+      conm2_node_ids   : (nCONM2,) int | None
+                         TB only: Nastran GRID IDs attached to CONM2 elements.
+                         Pass to DofSpace.remove_nodes() to drop mass DOFs.
+                         None for BIW.
 
     variant: "BIW" | "TB"
     """
@@ -115,14 +108,7 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     print(f"  Modes loaded : {n_total}  ({GDof_csv} DOFs = {GDof_csv // 6} nodes, G-set)")
     print(f"  Frequencies  : {freq_all[0]:.4f} ... {freq_all[-1]:.2f} Hz")
 
-    # --- Load K, M and build DOF mask ----------------------------------------
-    _NAS_EXTS = ("*.bdf", "*.nas", "*.dat", "*.inc")
-    bdf_files = sorted({f for ext in _NAS_EXTS for f in _BDF_DIR[variant].glob(ext)})
-    conm2_ids = None
-
-    # Both BIW and TB: K/M come from the H5. Node IDs and coordinates are
-    # read directly from the H5 (Epilysis A-set = G-set for both variants).
-    # No F06 USET parsing needed — Epilysis does not print USET tables.
+    # --- Load K, M, node IDs and coordinates from H5 (both BIW and TB) -------
     h5_file = DATA_DIR / "matrices" / "matrices.h5"
     if not h5_file.exists():
         raise FileNotFoundError(
@@ -135,9 +121,12 @@ def run_modal_analysis(variant: str = "BIW", skip_rigid: bool = True) -> dict:
     node_ids = h5data["node_ids"]
     node_xyz = h5data["node_xyz"]
 
+    # TB only: read CONM2 node IDs from BDF includes for optional removal.
+    conm2_ids = None
     if variant == "TB":
-        # TB only: read CONM2 node IDs from BDF files for optional removal.
         from seat_model.reader import read_bdf_conm2_node_ids
+        _NAS_EXTS = ("*.bdf", "*.nas", "*.dat", "*.inc")
+        bdf_files = sorted({f for ext in _NAS_EXTS for f in _BDF_DIR[variant].glob(ext)})
         conm2_ids = read_bdf_conm2_node_ids(bdf_files)
         print(f"  CONM2 nodes  : {len(conm2_ids)}  (removable via conm2_node_ids)")
 

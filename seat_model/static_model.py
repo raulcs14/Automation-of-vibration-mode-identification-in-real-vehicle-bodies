@@ -45,7 +45,7 @@ def run_static_model(variant: str = "BIW") -> dict:
     if not ref_csv.exists():
         raise FileNotFoundError(
             f"{ref_csv} not found.\n"
-            f"Run ansa_model/meta_scripts/export_static_reference.py with VARIANT='{variant}' from META."
+            f"Run seat_model/meta_runner/scripts/export_static_reference.py with VARIANT='{variant}' from META."
         )
 
     ref = read_csv(ref_csv, ensure_2d=True)[:, :len(REF_NAMES)]

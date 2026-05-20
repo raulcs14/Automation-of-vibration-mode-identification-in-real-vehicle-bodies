@@ -13,9 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ansa_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
-from ansa_model.static_model   import run_static_model
-from ansa_model.subdomains     import build_biw_subdomains
+from seat_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
+from seat_model.static_model   import run_static_model
+from seat_model.subdomains     import build_biw_subdomains
 from common.subdomain          import average_zones
 from common.utils              import translational_dof_indices
 

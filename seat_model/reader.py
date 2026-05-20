@@ -1,9 +1,9 @@
 """
 Readers for ANSA/Nastran outputs:
-  - H5 file       -> M, K matrices + node coordinates + DOF order (USET)
-  - F06 + BDF     -> A-set node IDs and coordinates (BIW and TB, no intermediate CSVs)
-  - F06 file      -> eigenfrequencies
-  - CSV files     -> mode shapes and reference displacements
+  - H5 file  -> M, K matrices + node coordinates (Epilysis G-set, both BIW and TB)
+  - F06 file -> eigenfrequencies (fallback when frequencies.csv is absent)
+  - BDF      -> CONM2 node IDs (TB only, for optional mass-node removal)
+  - CSV      -> mode shapes and reference displacements
 """
 
 import re
@@ -92,109 +92,17 @@ def read_h5(h5_path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# F06 USET parser (shared by BIW and TB)
+# DOF-set mask helper (used in tests and for G-set -> A-set filtering)
 # ---------------------------------------------------------------------------
-
-_USET_HEADER = re.compile(
-    r"U\s+S\s+E\s+T\s+D\s+E\s+F\s+I\s+N\s+I\s+T\s+I\s+O\s+N\s+T\s+A\s+B\s+L\s+E"
-)
-_SET_LABEL = re.compile(r"\b([A-Z])\s+DISPLACEMENT\s+SET")
-_DATA_ROW  = re.compile(r"^\s*\d+=(.+?)(?:=\s*\d+)?\s*$")
-_DOF_TOKEN = re.compile(r"(\d+)-\d")
-
-
-def _parse_uset_block(lines: list[str], start: int, set_name: str) -> tuple[set[int], int]:
-    node_ids: set[int] = set()
-    i = start
-    while i < len(lines):
-        line = lines[i]
-        if re.match(r"^1\s+\S", line):          # Nastran page-break — skip
-            i += 1
-            continue
-        if _USET_HEADER.search(line):            # new USET table
-            break
-        lm = _SET_LABEL.search(line)
-        if lm and lm.group(1) != set_name:       # different set label
-            break
-        m = _DATA_ROW.match(line)
-        if m:
-            for token in _DOF_TOKEN.finditer(m.group(1)):
-                node_ids.add(int(token.group(1)))
-        i += 1
-    return node_ids, i
-
-
-def _parse_uset_sets(f06_path: Path) -> dict[str, set[int]]:
-    """Parse all USET displacement sets from a getKM .f06 and return a dict of set_name -> node IDs."""
-    lines = f06_path.read_text(encoding="latin-1").splitlines()
-    sets: dict[str, set[int]] = {}
-
-    i = 0
-    while i < len(lines):
-        if _USET_HEADER.search(lines[i]):
-            for j in range(i + 1, min(i + 6, len(lines))):
-                lm = _SET_LABEL.search(lines[j])
-                if lm:
-                    sname = lm.group(1)
-                    node_ids, i = _parse_uset_block(lines, j + 1, sname)
-                    sets[sname] = node_ids
-                    break
-            else:
-                i += 1
-        else:
-            lm = _SET_LABEL.search(lines[i])
-            if lm:
-                sname = lm.group(1)
-                if sname not in sets:
-                    node_ids, i = _parse_uset_block(lines, i + 1, sname)
-                    sets[sname] = node_ids
-                else:
-                    i += 1
-            else:
-                i += 1
-
-    return sets
-
-
-def read_f06_aset_nodes(f06_path: Path) -> np.ndarray:
-    """
-    Parse a Nastran getKM .f06 and return the node IDs in the A-set
-    (the DOFs written to K and M matrices), sorted ascending.
-    """
-    sets = _parse_uset_sets(f06_path)
-    if "A" not in sets:
-        raise ValueError(f"A-set not found in USET tables of {f06_path}")
-    return np.array(sorted(sets["A"]), dtype=int)
-
-
-def read_f06_aset_gset_nodes(f06_path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Parse a Nastran getKM .f06 and return (aset_node_ids, gset_node_ids),
-    both sorted ascending. G-set is all model nodes; A-set is the subset
-    whose DOFs enter the K and M matrices.
-    """
-    sets = _parse_uset_sets(f06_path)
-    if "A" not in sets:
-        raise ValueError(f"A-set not found in USET tables of {f06_path}")
-    if "G" not in sets:
-        raise ValueError(f"G-set not found in USET tables of {f06_path}")
-    return (np.array(sorted(sets["A"]), dtype=int),
-            np.array(sorted(sets["G"]), dtype=int))
-
 
 def aset_dof_mask_from_gset(aset_node_ids: np.ndarray,
                              gset_node_ids: np.ndarray) -> np.ndarray:
     """
     Build a boolean DOF-level keep-mask aligned with the G-set.
 
-    Returns a 1-D bool array of length len(gset_node_ids)*6 where each entry
-    is True if the corresponding DOF belongs to a node in the A-set (i.e. a
-    free structural node that contributes to K and M).  Nodes present in the
-    G-set but absent from the A-set are SPC-constrained or flagged as singular
-    by Nastran; their DOFs must be excluded before any matrix operation.
-
-    Assumes 6 DOFs per node (Ux Uy Uz Rx Ry Rz) and nodes sorted in ascending
-    ID order, as returned by read_f06_aset_gset_nodes.
+    Returns a 1-D bool array of length len(gset_node_ids)*6 where True means
+    the DOF belongs to a node in the A-set (free structural node that enters
+    K and M). Assumes 6 DOFs per node, nodes sorted ascending.
     """
     node_in_aset = np.isin(gset_node_ids, aset_node_ids)
     return np.repeat(node_in_aset, 6)
@@ -271,54 +179,6 @@ def read_bdf_conm2_node_ids(bdf_paths: list[Path]) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# High-level node readers per variant
-# ---------------------------------------------------------------------------
-
-def _build_node_xyz(node_ids: np.ndarray, all_coords: dict) -> np.ndarray:
-    missing = [int(n) for n in node_ids if n not in all_coords]
-    if missing:
-        raise ValueError(
-            f"{len(missing)} A-set node IDs not found in BDF files: {missing[:10]}..."
-        )
-    return np.array([all_coords[int(n)] for n in node_ids], dtype=float)
-
-
-def read_f06_biw(f06_path: Path, bdf_paths: list[Path]) -> dict:
-    """
-    Build node_ids, node_xyz and aset_dof_mask for the BIW variant.
-
-    Returns:
-      node_ids      : (nANodes,)      A-set GRID IDs, sorted
-      node_xyz      : (nANodes, 3)    coordinates of A-set nodes
-      aset_dof_mask : (nGDof,) bool   True for DOFs in A-set (used to filter modes/ref)
-    """
-    aset_ids, gset_ids = read_f06_aset_gset_nodes(f06_path)
-    all_coords = read_bdf_node_coords(bdf_paths)
-    node_xyz = _build_node_xyz(aset_ids, all_coords)
-    mask = aset_dof_mask_from_gset(aset_ids, gset_ids)
-    return dict(node_ids=aset_ids, node_xyz=node_xyz, aset_dof_mask=mask)
-
-
-def read_f06_tb(f06_path: Path, bdf_paths: list[Path]) -> dict:
-    """
-    Build node_ids, node_xyz, conm2_node_ids and aset_dof_mask for the TB variant.
-
-    Returns:
-      node_ids       : (nANodes,)      A-set GRID IDs, sorted
-      node_xyz       : (nANodes, 3)    coordinates of A-set nodes
-      conm2_node_ids : (nCONM2,)       GRID IDs attached to CONM2 elements, sorted
-      aset_dof_mask  : (nGDof,) bool   True for DOFs in A-set
-    """
-    aset_ids, gset_ids = read_f06_aset_gset_nodes(f06_path)
-    all_coords = read_bdf_node_coords(bdf_paths)
-    conm2_node_ids = read_bdf_conm2_node_ids(bdf_paths)
-    node_xyz = _build_node_xyz(aset_ids, all_coords)
-    mask = aset_dof_mask_from_gset(aset_ids, gset_ids)
-    return dict(node_ids=aset_ids, node_xyz=node_xyz,
-                conm2_node_ids=conm2_node_ids, aset_dof_mask=mask)
-
-
-# ---------------------------------------------------------------------------
 # F06 reader (frequencies)
 # ---------------------------------------------------------------------------
 
@@ -370,29 +230,3 @@ def read_csv(csv_path: Path, dtype=float, flatten: bool = False,
         data = data.reshape(-1, 1)
     return data
 
-
-# ---------------------------------------------------------------------------
-# DOF mask helpers (used by TB CONM2 removal)
-# ---------------------------------------------------------------------------
-
-def dof_indices_for_nodes(node_ids_to_remove: np.ndarray,
-                          uset_g: np.ndarray) -> np.ndarray:
-    """
-    Return the G-set row indices (DOF positions) that belong to the given node IDs.
-    uset_g is a structured array with fields 'ID' and 'C' (component 1-6).
-    """
-    id_field = uset_g["ID"].astype(int)
-    mask = np.isin(id_field, node_ids_to_remove)
-    return np.where(mask)[0]
-
-
-def keep_mask_from_nodes(node_ids_to_remove: np.ndarray,
-                         uset_g: np.ndarray) -> np.ndarray:
-    """
-    Return a boolean keep-mask of length nDOF: True for DOFs to retain,
-    False for DOFs belonging to node_ids_to_remove.
-    """
-    remove_idx = dof_indices_for_nodes(node_ids_to_remove, uset_g)
-    mask = np.ones(len(uset_g), dtype=bool)
-    mask[remove_idx] = False
-    return mask

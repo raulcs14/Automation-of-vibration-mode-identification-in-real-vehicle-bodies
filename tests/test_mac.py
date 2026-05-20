@@ -72,8 +72,8 @@ def _load_simple():
 
 
 def _load_ansa(variant: str, remove_conm2: bool):
-    from ansa_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
-    from ansa_model.static_model   import run_static_model
+    from seat_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
+    from seat_model.static_model   import run_static_model
     from common.dof_reduction      import DofSpace
 
     dyn  = run_modal_analysis(variant=variant)
@@ -96,7 +96,7 @@ def _load_ansa(variant: str, remove_conm2: bool):
 
     subdomains = None
     if variant == "BIW":
-        from ansa_model.subdomains import build_biw_subdomains
+        from seat_model.subdomains import build_biw_subdomains
         subdomains = build_biw_subdomains(space.node_ids, space.node_xyz)
         print(f"  Subdominios BIW: {len(subdomains)} zonas")
 

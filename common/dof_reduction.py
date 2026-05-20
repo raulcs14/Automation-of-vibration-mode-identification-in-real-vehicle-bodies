@@ -237,5 +237,5 @@ class DofSpace:
         -------
         dict  {zone_name: [positional_index, ...]}
         """
-        from ansa_model.subdomains import grid_ids_to_node_indices
+        from seat_model.subdomains import grid_ids_to_node_indices
         return grid_ids_to_node_indices(subdomains_grid, self.node_ids)

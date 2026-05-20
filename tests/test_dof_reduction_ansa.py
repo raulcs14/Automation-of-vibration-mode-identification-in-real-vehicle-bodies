@@ -22,8 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.dof_reduction import DofSpace
 from common.utils import translational_dof_indices
 from common.subdomain import average_zones
-from ansa_model.subdomains import grid_ids_to_node_indices
-from ansa_model.reader import aset_dof_mask_from_gset
+from seat_model.subdomains import grid_ids_to_node_indices
+from seat_model.reader import aset_dof_mask_from_gset
 
 
 # ---------------------------------------------------------------------------

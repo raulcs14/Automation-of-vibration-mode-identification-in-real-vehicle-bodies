@@ -49,7 +49,7 @@ def build_subdomains(
     """
     Build subdomains as positional indices into node_ids for BIW or TB.
 
-    Looks for ``data/ansa_model/<variant>/subdomains.json`` (produced by
+    Looks for ``data/seat_model/<variant>/meta/subdomains.json`` (produced by
     ``export_biw_subdomains.py``).  For BIW falls back to geometric zones
     if the file is missing; TB raises an error instead since there is no
     meaningful geometric fallback for a trimmed body.

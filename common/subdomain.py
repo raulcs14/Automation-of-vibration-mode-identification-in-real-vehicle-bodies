@@ -43,22 +43,6 @@ def average_zones(modes_t: np.ndarray, subdomains: Dict[str, List[int]],
     return modes_red
 
 
-def average_mode_subdomain(mode: np.ndarray, node_indices: List[int],
-                            n_dof_per_node: int = 6) -> np.ndarray:
-    """
-    Average translational DOFs (Ux, Uy, Uz) over all nodes in a zone for one mode.
-    Expects full 6-DOF-per-node vector.
-
-    Returns:
-        phi_avg: (3,) averaged vector
-    """
-    nodes = np.asarray(node_indices)
-    ux = mode[n_dof_per_node * nodes + 0]
-    uy = mode[n_dof_per_node * nodes + 1]
-    uz = mode[n_dof_per_node * nodes + 2]
-    return np.array([ux.mean(), uy.mean(), uz.mean()])
-
-
 def reduce_mk_by_subdomains(M_t: np.ndarray, K_t: np.ndarray,
                              subdomains: Dict[str, List[int]],
                              n_nodes: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
