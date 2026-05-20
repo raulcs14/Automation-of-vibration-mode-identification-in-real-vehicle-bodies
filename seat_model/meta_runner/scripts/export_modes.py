@@ -1,20 +1,23 @@
 """
 Export modal eigenvectors from a Nastran SOL103 result to CSV.
 
-Run from inside META post-processor:
-    File > Execute Script > export_modes.py
+Invoked by meta_runner/run_postprocess.py via:
+    meta_post64.bat -b -s export_modes.py
 
-Outputs (in data/ansa_model/<variant>/):
-    modal_trans_results.csv   (nNodes*3, nModes)
-    modal_rot_results.csv     (nNodes*3, nModes)
-    modal_total_results.csv   (nNodes*6, nModes)  full [trans+rot] interleaved
+Reads paths from environment variables set by the launcher:
+    META_MODAL_DAT, META_MODAL_OP2, META_OUTPUT_DIR
 """
 
+import os
 import numpy as np
-from meta import models, results, groups
+from pathlib import Path
 from dataclasses import dataclass
-from config import INPUT_MODAL_DAT, INPUT_MODAL_OP2, OUTPUT_DIR_MODAL as OUTPUT_DIR, VARIANT
+from meta import models, results, groups
 from utils import save_csv, interleave_6dof, extract_deformation_matrix
+
+INPUT_MODAL_DAT = Path(os.environ["META_MODAL_DAT"])
+INPUT_MODAL_OP2 = Path(os.environ["META_MODAL_OP2"])
+OUTPUT_DIR      = Path(os.environ["META_OUTPUT_DIR"])
 
 
 @dataclass
@@ -30,7 +33,7 @@ class ModalAnalysis:
         return self.model.get_nodes('all')
 
     def get_grp(self, nodes):
-        return groups.CreateGroupFromNodes(self.model.id, 'grp_TB', nodes)
+        return groups.CreateGroupFromNodes(self.model.id, 'grp_modal', nodes)
 
     @property
     def get_sol103_translational(self):
@@ -75,5 +78,4 @@ def main():
     save_csv(total_mat, OUTPUT_DIR / 'modal_total_results.csv')
 
 
-if __name__ == '__main__':
-    main()
+main()

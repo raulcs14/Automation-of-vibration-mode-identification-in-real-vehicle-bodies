@@ -19,6 +19,17 @@ ansa_model/meta_scripts/debug_*.py
 epilysis_runner/config/paths.py
 ansa_model/meta_scripts/config.py
 
+# META working files (log/session files written by META during batch runs)
+seat_model/meta_runner/logs/
+ANSA_Input.log
+META_post.log
+META_post.ses
+META_post.bak.ses
+
+# Local paths configs (each user has their own)
+seat_model/epilysis_runner/config/paths.py
+seat_model/meta_runner/config/paths.py
+
 # IDE
 .vscode/
 .idea/

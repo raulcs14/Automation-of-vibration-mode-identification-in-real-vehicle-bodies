@@ -1,0 +1,44 @@
+"""
+Local paths configuration for meta_runner — copy to paths.py and fill in your paths.
+paths.py is gitignored so each user keeps their own copy.
+"""
+
+from pathlib import Path
+
+META_EXE = Path(r"C:\path\to\BETA_CAE_Systems\meta_post_vXX.X.X\meta_post64.bat")
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SEAT_ROOT = _REPO_ROOT / "data" / "seat_model"
+
+# --- TB (Trimmed Body) — inputs come from repo data/ after epilysis_runner ---
+_TB_ANSA = _SEAT_ROOT / "TB" / "ansa"
+
+TB_INPUTS = {
+    "modal_dat":   _TB_ANSA / "modal"    / "input"  / "000_Header_TB_modal.dat",
+    "modal_op2":   _TB_ANSA / "modal"    / "output" / "000_Header_TB_modal_run.op2",
+    "static_dat":  _TB_ANSA / "static"   / "input"  / "000_Header_TB_static_reference.dat",
+    "static_op2":  _TB_ANSA / "static"   / "output" / "000_Header_TB_static_reference_run.op2",
+    "matrices_h5": _TB_ANSA / "matrices" / "output" / "000_Header_TB_getKM.h5",
+    "getkm_f06":   _TB_ANSA / "matrices" / "output" / "000_Header_TB_getKM.f06",
+    "bdf_dir":     _TB_ANSA / "matrices" / "input",
+}
+
+# --- BIW (Body in White) — inputs come from repo data/ after epilysis_runner ---
+_BIW_ANSA = _SEAT_ROOT / "BIW" / "ansa"
+
+BIW_INPUTS = {
+    "modal_dat":   _BIW_ANSA / "modal"    / "input"  / "000_Header_BIW_modal.dat",
+    "modal_op2":   _BIW_ANSA / "modal"    / "output" / "000_Header_BIW_modal_run.op2",
+    "static_dat":  _BIW_ANSA / "static"   / "input"  / "000_Header_BIW_static_reference.dat",
+    "static_op2":  _BIW_ANSA / "static"   / "output" / "000_Header_BIW_static_reference_run.op2",
+    "matrices_h5": _BIW_ANSA / "matrices" / "output" / "000_Header_BIW_getKM.h5",
+    "getkm_f06":   _BIW_ANSA / "matrices" / "output" / "000_Header_BIW_getKM.f06",
+    "bdf_dir":     _BIW_ANSA / "matrices" / "input",
+}
+
+# --- Outputs always go to data/seat_model/<MODEL>/meta/ -----------------------
+TB_OUTPUT_DIR  = _SEAT_ROOT / "TB"  / "meta"
+BIW_OUTPUT_DIR = _SEAT_ROOT / "BIW" / "meta"
+
+ALL_INPUTS = {"TB": TB_INPUTS, "BIW": BIW_INPUTS}
+ALL_OUTPUTS = {"TB": TB_OUTPUT_DIR, "BIW": BIW_OUTPUT_DIR}

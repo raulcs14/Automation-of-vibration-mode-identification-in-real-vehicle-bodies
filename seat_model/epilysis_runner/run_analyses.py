@@ -22,8 +22,13 @@ _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
 try:
-    from config.paths import EPILYSIS_EXE, MODAL_DIR, STATIC_DIR, MATRICES_DIR
-    from config.paths import MODAL_DAT, STATIC_DAT, MATRICES_DAT, OUTPUT_ROOT
+    from config.paths import EPILYSIS_EXE
+    from config.paths import (
+        TB_MODAL_DIR, TB_STATIC_DIR, TB_MATRICES_DIR,
+        TB_MODAL_DAT, TB_STATIC_DAT, TB_MATRICES_DAT, TB_OUTPUT_ROOT,
+        BIW_MODAL_DIR, BIW_STATIC_DIR, BIW_MATRICES_DIR,
+        BIW_MODAL_DAT, BIW_STATIC_DAT, BIW_MATRICES_DAT, BIW_OUTPUT_ROOT,
+    )
 except ImportError:
     sys.exit(
         "ERROR: epilysis_runner/config/paths.py not found.\n"
@@ -203,20 +208,23 @@ def _configure_modal() -> dict:
 
     outputs = _choose(
         "  Outputs to request (modal punch):",
-        [("disp",   "DISP  — nodal displacements (eigenvectors)"),
-         ("stress", "STRESS — element stresses")],
+        [("disp",    "DISP    — nodal displacements (eigenvectors)"),
+         ("stress",  "STRESS  — element stresses (incl. shear)"),
+         ("force",   "FORCE   — element forces (membrane/bending)"),
+         ("gpforce", "GPFORCE — grid point force balance per element"),],
         multi=True,
     )
     if not outputs:
-        outputs = ["disp", "stress"]
-        print("  (no selection — using default: DISP + STRESS)")
+        outputs = ["disp", "stress", "force", "gpforce"]
+        print("  (no selection — using default: DISP + STRESS + FORCE + GPFORCE)")
 
     patches = {
         "EIGRL,": f"EIGRL,3,{freq_min},{freq_max}.",
-        "DISP(REAL,PUNCH": "DISP(REAL,PUNCH,SORT2) = ALL" if "disp" in outputs else "$DISP omitted",
+        "DISP(REAL,PUNCH":   "DISP(REAL,PUNCH,SORT2)   = ALL" if "disp"    in outputs else "$DISP omitted",
+        "STRESS(REAL,PUNCH": "STRESS(REAL,PUNCH,SORT2) = ALL" if "stress"  in outputs else "$STRESS omitted",
+        "FORCE(REAL,PUNCH":  "FORCE(REAL,PUNCH,SORT2)  = ALL" if "force"   in outputs else "$FORCE omitted",
+        "GPFORCE(PUNCH":     "GPFORCE(PUNCH,SORT2)     = ALL" if "gpforce" in outputs else "$GPFORCE omitted",
     }
-    if "stress" in outputs:
-        patches["STRESS(REAL,PUNCH"] = "STRESS(REAL,PUNCH,SORT2) = ALL"
 
     return {"patches": patches}
 
@@ -241,18 +249,22 @@ def _configure_static() -> dict:
 
     outputs = _choose(
         "  Outputs to request:",
-        [("disp",   "DISP  — nodal displacements"),
-         ("stress", "STRESS — element stresses")],
+        [("disp",    "DISP    — nodal displacements"),
+         ("stress",  "STRESS  — element stresses (incl. shear)"),
+         ("force",   "FORCE   — element forces (membrane/bending)"),
+         ("gpforce", "GPFORCE — grid point force balance per element"),
+         ("ese",     "ESE     — element strain energy"),],
         multi=True,
     )
     if not outputs:
-        outputs = ["disp", "stress"]
-        print("  (no selection — using default: DISP + STRESS)")
+        outputs = ["disp", "stress", "force", "gpforce", "ese"]
+        print("  (no selection — using default: all outputs)")
 
-    if "disp" in outputs:
-        patches["DISP(REAL,PUNCH"] = "DISP(REAL,PUNCH,SORT2) = ALL"
-    if "stress" in outputs:
-        patches["STRESS(REAL,PUNCH"] = "STRESS(REAL,PUNCH,SORT2) = ALL"
+    if "disp"    in outputs: patches["DISP(REAL,PUNCH"]   = "DISP(REAL,PUNCH,SORT2)   = ALL"
+    if "stress"  in outputs: patches["STRESS(REAL,PUNCH"] = "STRESS(REAL,PUNCH,SORT2) = ALL"
+    if "force"   in outputs: patches["FORCE(REAL,PUNCH"]  = "FORCE(REAL,PUNCH,SORT2)  = ALL"
+    if "gpforce" in outputs: patches["GPFORCE(PUNCH"]     = "GPFORCE(PUNCH,SORT2)     = ALL"
+    if "ese"     in outputs: patches["ESE(PUNCH"]         = "ESE(PUNCH)               = ALL"
 
     return {"patches": patches}
 
@@ -264,29 +276,54 @@ def _configure_matrices() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Analysis definitions
+# Analysis definitions — one dict per model
 # ---------------------------------------------------------------------------
 
-ANALYSIS_DEFS = {
-    "modal": {
-        "label":        "Modal (SOL 103) — eigenvectors + frequencies",
-        "dat":          MODAL_DIR / MODAL_DAT,
-        "outdir":       OUTPUT_ROOT / "modal"    / "output",
-        "configurator": _configure_modal,
+_ANALYSIS_DEFS_BY_MODEL = {
+    "TB": {
+        "modal": {
+            "label":        "Modal (SOL 103) — eigenvectors + frequencies",
+            "dat":          TB_MODAL_DIR    / TB_MODAL_DAT,
+            "outdir":       TB_OUTPUT_ROOT  / "modal"    / "output",
+            "configurator": _configure_modal,
+        },
+        "static": {
+            "label":        "Static reference (SOL 101) — displacements + stresses",
+            "dat":          TB_STATIC_DIR   / TB_STATIC_DAT,
+            "outdir":       TB_OUTPUT_ROOT  / "static"   / "output",
+            "configurator": _configure_static,
+        },
+        "matrices": {
+            "label":        "K/M matrices getKM (SOL 101)",
+            "dat":          TB_MATRICES_DIR / TB_MATRICES_DAT,
+            "outdir":       TB_OUTPUT_ROOT  / "matrices" / "output",
+            "configurator": _configure_matrices,
+        },
     },
-    "static": {
-        "label":        "Static reference (SOL 101) — displacements + stresses",
-        "dat":          STATIC_DIR / STATIC_DAT,
-        "outdir":       OUTPUT_ROOT / "static"   / "output",
-        "configurator": _configure_static,
-    },
-    "matrices": {
-        "label":        "K/M matrices getKM (SOL 101)",
-        "dat":          MATRICES_DIR / MATRICES_DAT,
-        "outdir":       OUTPUT_ROOT / "matrices" / "output",
-        "configurator": _configure_matrices,
+    "BIW": {
+        "modal": {
+            "label":        "Modal (SOL 103) — eigenvectors + frequencies",
+            "dat":          BIW_MODAL_DIR    / BIW_MODAL_DAT,
+            "outdir":       BIW_OUTPUT_ROOT  / "modal"    / "output",
+            "configurator": _configure_modal,
+        },
+        "static": {
+            "label":        "Static reference (SOL 101) — displacements + stresses",
+            "dat":          BIW_STATIC_DIR   / BIW_STATIC_DAT,
+            "outdir":       BIW_OUTPUT_ROOT  / "static"   / "output",
+            "configurator": _configure_static,
+        },
+        "matrices": {
+            "label":        "K/M matrices getKM (SOL 101)",
+            "dat":          BIW_MATRICES_DIR / BIW_MATRICES_DAT,
+            "outdir":       BIW_OUTPUT_ROOT  / "matrices" / "output",
+            "configurator": _configure_matrices,
+        },
     },
 }
+
+# Default (kept for backward compatibility if imported externally)
+ANALYSIS_DEFS = _ANALYSIS_DEFS_BY_MODEL["TB"]
 
 # ---------------------------------------------------------------------------
 # Runner
@@ -366,7 +403,19 @@ def main() -> None:
 
     _validate()
 
-    options = [(k, v["label"]) for k, v in ANALYSIS_DEFS.items()]
+    model_choice = _choose(
+        "Which model do you want to analyse?",
+        [("TB",  "TB  — Trimmed Body (with masses)"),
+         ("BIW", "BIW — Body in White (without masses)")],
+    )
+    if not model_choice:
+        print("No model selected. Exiting.")
+        return
+    model_key = model_choice[0]
+    analysis_defs = _ANALYSIS_DEFS_BY_MODEL[model_key]
+    print(f"\n  Model: {model_key}")
+
+    options = [(k, v["label"]) for k, v in analysis_defs.items()]
     selected = _choose("Which analyses do you want to run?", options, multi=True)
     if not selected:
         print("No analyses selected. Exiting.")
@@ -374,20 +423,21 @@ def main() -> None:
 
     analysis_configs = {}
     for key in selected:
-        extra = ANALYSIS_DEFS[key]["configurator"]()
+        extra = analysis_defs[key]["configurator"]()
         analysis_configs[key] = extra
 
     print(f"\n{'='*60}")
+    print(f"  Model : {model_key}")
     print("  Ready to run:")
     for key in selected:
-        print(f"    - {ANALYSIS_DEFS[key]['label']}")
+        print(f"    - {analysis_defs[key]['label']}")
     if not _ask_bool("\nProceed?", default=True):
         print("Aborted.")
         return
 
     failed = []
     for key in selected:
-        rc = _run(key, ANALYSIS_DEFS[key], analysis_configs[key]["patches"])
+        rc = _run(key, analysis_defs[key], analysis_configs[key]["patches"])
         if rc != 0:
             failed.append(key)
 

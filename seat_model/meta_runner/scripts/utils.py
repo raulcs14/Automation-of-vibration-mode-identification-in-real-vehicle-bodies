@@ -9,9 +9,7 @@ def save_csv(matrix, path):
 def interleave_6dof(trans: np.ndarray, rot: np.ndarray) -> np.ndarray:
     """
     Interleave translational and rotational results into a (6*nNodes, nCols) matrix.
-
-    trans, rot: (nNodes*3, nCols) — translational and rotational components.
-    Returns   : (nNodes*6, nCols) — rows ordered as [Ux, Uy, Uz, Rx, Ry, Rz] per node.
+    Rows ordered as [Ux, Uy, Uz, Rx, Ry, Rz] per node.
     """
     DOF, n_cols = trans.shape
     n_nodes = DOF // 3
@@ -23,9 +21,7 @@ def interleave_6dof(trans: np.ndarray, rot: np.ndarray) -> np.ndarray:
 def extract_deformation_matrix(item_list, grids_group) -> np.ndarray:
     """
     Extract deformation vectors for each item in item_list and stack into a matrix.
-
-    Works for both mode lists (eigenvectors) and load case lists (displacements).
-    Returns: (nDOF, nItems) if more than one item, else (nDOF, 1).
+    Returns (nDOF, nItems).
     """
     vectors = []
     for item in item_list:

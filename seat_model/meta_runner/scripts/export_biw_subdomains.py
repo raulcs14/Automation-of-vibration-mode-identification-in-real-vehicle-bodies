@@ -1,41 +1,32 @@
 """
 Export shell subdomains (PID -> list of GRID IDs) for BIW or TB.
 
-Select the model by setting VARIANT in config.py, then run from META:
-    File > Execute Script > export_biw_subdomains.py
+Invoked by meta_runner/run_postprocess.py via:
+    meta_post64.bat -b -s export_biw_subdomains.py
 
-Output:
-    data/ansa_model/<VARIANT>/subdomains.json
-    {
-      "pid_2":  [101, 102, 103, ...],
-      "pid_17": [201, 345, ...],
-      ...
-    }
-
-Keys are "pid_<N>" strings so the JSON is self-documenting.
-Only shell elements (CQUAD4, CQUAD8, CTRIA3, CTRIA6) are considered.
+Reads paths from environment variables set by the launcher:
+    META_MODAL_DAT, META_OUTPUT_DIR
 """
 
 import json
-from config import INPUT_MODAL_DAT, OUTPUT_DIR
-
+import os
+from pathlib import Path
 from meta import models
 
 SHELL_DECK_TYPES = {"CQUAD4", "CQUAD8", "CTRIA3", "CTRIA6"}
-OUTPUT_FILE = OUTPUT_DIR / "subdomains.json"
-OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-print("Loading model …")
+INPUT_MODAL_DAT = Path(os.environ["META_MODAL_DAT"])
+OUTPUT_DIR      = Path(os.environ["META_OUTPUT_DIR"])
+OUTPUT_FILE     = OUTPUT_DIR / "subdomains.json"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+print("Loading model ...")
 model = models.LoadModel("MetaPost", str(INPUT_MODAL_DAT), "NASTRAN")
 all_elems = model.get_elements("all")
 
-# Filter to shell elements only
 shell_elems = [e for e in all_elems if e.get_deck_type() in SHELL_DECK_TYPES]
 print(f"  Shell elements: {len(shell_elems)}")
 
-# ---------------------------------------------------------------------------
-# Build PID -> set of GRID IDs
 pid_to_grids: dict[int, set] = {}
 for e in shell_elems:
     pid = e.part_id
@@ -44,8 +35,6 @@ for e in shell_elems:
 
 print(f"  Distinct PIDs : {len(pid_to_grids)}")
 
-# ---------------------------------------------------------------------------
-# Serialize: sort PIDs and node lists for reproducibility
 subdomains = {
     f"pid_{pid}": sorted(pid_to_grids[pid])
     for pid in sorted(pid_to_grids)
@@ -54,12 +43,10 @@ subdomains = {
 total_nodes = sum(len(v) for v in subdomains.values())
 print(f"  Total node entries (with overlap): {total_nodes}")
 
-# Report any PIDs with very few nodes (might be degenerate)
 for key, grids in subdomains.items():
     if len(grids) < 4:
         print(f"  WARNING: {key} has only {len(grids)} nodes")
 
-# ---------------------------------------------------------------------------
 with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
     json.dump(subdomains, f, indent=2)
 

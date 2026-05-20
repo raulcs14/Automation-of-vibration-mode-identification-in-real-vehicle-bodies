@@ -279,8 +279,8 @@ def _run_simple(cfg: dict) -> None:
 
 
 def _run_ansa(cfg: dict) -> None:
-    from ansa_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
-    from ansa_model.static_model   import run_static_model, SHORT_NAMES
+    from seat_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
+    from seat_model.static_model   import run_static_model, SHORT_NAMES
 
     variant = cfg["ansa_variant"]
     print(f"\nCargando datos del modelo ANSA [{variant}]...")
@@ -312,7 +312,7 @@ def _run_ansa(cfg: dict) -> None:
     subdomains = None
     n_nodes    = 0
     if cfg.get("subdomain", False):
-        from ansa_model.subdomains import build_subdomains
+        from seat_model.subdomains import build_subdomains
         try:
             subdomains_grid = build_subdomains(variant, space.node_ids, space.node_xyz)
             subdomains      = space.build_subdomains(subdomains_grid)

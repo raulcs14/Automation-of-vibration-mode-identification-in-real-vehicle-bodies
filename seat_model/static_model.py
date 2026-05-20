@@ -6,23 +6,18 @@ Variants:
     "TB"  — Trimmed Body (with lumped masses)
 
 Primary data source (inside the repo, gitignored):
-    data/ansa_model/<variant>/ref_total_results.csv   full [trans+rot] interleaved (nDOF, nRefs)
+    data/seat_model/<variant>/meta/static/ref_total_results.csv   full [trans+rot] interleaved (nDOF, nRefs)
 
-To regenerate, run ansa_model/meta_scripts/export_static_reference.py from META.
+To regenerate, run seat_model/meta_runner/scripts/export_static_reference.py from META.
 """
 
 from pathlib import Path
 import numpy as np
-from ansa_model.reader import (read_csv, read_f06_biw)
+from seat_model.reader import read_csv
 
 _REPO_ROOT  = Path(__file__).resolve().parents[1]
 _SEAT_ROOT  = _REPO_ROOT / "data" / "seat_model"
 VARIANTS    = ["BIW", "TB"]
-
-_META_ROOT = Path(r"C:\Users\raulc\Documents\ProyectosGit\TFM\META\Test_Epilysis")
-
-_GETKM_F06_BIW = _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices" / "output" / "000_Header_BIW_getKM.f06"
-_BDF_DIR_BIW   = _META_ROOT / "BodyInWhite" / "dummycar_BIW_matrices"
 
 REF_NAMES   = ["Torsion reference"]
 SHORT_NAMES = ["Torsion"]
@@ -54,13 +49,6 @@ def run_static_model(variant: str = "BIW") -> dict:
         )
 
     ref = read_csv(ref_csv, ensure_2d=True)[:, :len(REF_NAMES)]
-
-    if variant == "BIW":
-        _NAS_EXTS = ("*.bdf", "*.nas", "*.dat", "*.inc")
-        bdf_files = sorted({f for ext in _NAS_EXTS for f in _BDF_DIR_BIW.glob(ext)})
-        f06data       = read_f06_biw(_GETKM_F06_BIW, bdf_files)
-        aset_dof_mask = f06data["aset_dof_mask"]
-        ref = ref[aset_dof_mask, :]
 
     print(f"  Reference shape: {ref.shape}  ({len(REF_NAMES)} reference(s): {REF_NAMES})")
     return dict(ref_moves_raw=ref, ref_names=list(REF_NAMES), short_names=list(SHORT_NAMES))

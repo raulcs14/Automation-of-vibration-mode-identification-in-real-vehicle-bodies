@@ -1,20 +1,23 @@
 """
 Export static reference displacements from a Nastran SOL101 result to CSV.
 
-Run from inside META post-processor:
-    File > Execute Script > export_static_reference.py
+Invoked by meta_runner/run_postprocess.py via:
+    meta_post64.bat -b -s export_static_reference.py
 
-Outputs (in data/ansa_model/<variant>/):
-    ref_trans_results.csv    (nNodes*3, nCases)
-    ref_rot_results.csv      (nNodes*3, nCases)
-    ref_total_results.csv    (nNodes*6, nCases)  full [trans+rot] interleaved
+Reads paths from environment variables set by the launcher:
+    META_STATIC_DAT, META_STATIC_OP2, META_OUTPUT_DIR
 """
 
+import os
 import numpy as np
-from meta import models, results, groups
+from pathlib import Path
 from dataclasses import dataclass
-from config import INPUT_STATIC_DAT, INPUT_STATIC_OP2, OUTPUT_DIR_STATIC as OUTPUT_DIR
+from meta import models, results, groups
 from utils import save_csv, interleave_6dof, extract_deformation_matrix
+
+INPUT_STATIC_DAT = Path(os.environ["META_STATIC_DAT"])
+INPUT_STATIC_OP2 = Path(os.environ["META_STATIC_OP2"])
+OUTPUT_DIR       = Path(os.environ["META_OUTPUT_DIR"])
 
 
 @dataclass
@@ -30,7 +33,7 @@ class StaticAnalysis:
         return self.model.get_nodes('all')
 
     def get_grp(self, nodes):
-        return groups.CreateGroupFromNodes(self.model.id, 'grp', nodes)
+        return groups.CreateGroupFromNodes(self.model.id, 'grp_static', nodes)
 
     @property
     def get_translational(self):
@@ -60,16 +63,15 @@ def main():
     displacements = mod_trans.get_translational
     rotations     = mod_rot.get_rotational
 
-    grids       = mod_trans.all_GRIDs
-    grp_trans   = mod_trans.get_grp(grids)
-    grp_rot     = mod_rot.get_grp(grids)
+    grids     = mod_trans.all_GRIDs
+    grp_trans = mod_trans.get_grp(grids)
+    grp_rot   = mod_rot.get_grp(grids)
 
     print(f"Load cases: {len(displacements)} trans, {len(rotations)} rot")
     print(f"Nodes: {len(grids)}")
 
     trans_mat = extract_deformation_matrix(displacements, grp_trans)
     rot_mat   = extract_deformation_matrix(rotations[:1],  grp_rot)
-    # Replicate rot across all translational cases so shapes match
     rot_mat   = np.repeat(rot_mat, trans_mat.shape[1], axis=1)
     total_mat = interleave_6dof(trans_mat, rot_mat)
 
@@ -78,5 +80,4 @@ def main():
     save_csv(total_mat, OUTPUT_DIR / 'ref_total_results.csv')
 
 
-if __name__ == '__main__':
-    main()
+main()
