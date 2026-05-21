@@ -235,6 +235,8 @@ def _run_simple(cfg: dict) -> None:
     from simple_model.analysis.modal_analysis import run_modal_analysis
     from simple_model.analysis.static_model   import run_static_model, SHORT_NAMES
     from simple_model.geometry.chassis        import build_chassis_geometry
+    from simple_model.fem.internal_forces     import project_to_shear_forces
+    import config
 
     print("\nCargando datos del modelo simple...")
     dyn  = run_modal_analysis()
@@ -249,9 +251,10 @@ def _run_simple(cfg: dict) -> None:
     GDof     = modes.shape[0]
     n_nodes  = GDof // 6
 
+    geo = build_chassis_geometry("torsion")
+
     subdomains = None
     if cfg["subdomain"]:
-        geo        = build_chassis_geometry("torsion")
         subdomains = geo.subdomains
 
     t_idx = _translational_indices(GDof)
@@ -260,7 +263,7 @@ def _run_simple(cfg: dict) -> None:
     short_names = [SHORT_NAMES[rc] for rc in cfg["ref_cases"]]
     title       = "Simple model — Identificación de modos"
 
-    print("\nCalculando matrices MAC...")
+    print("\nCalculando matrices MAC (desplazamientos)...")
     mac_matrices = _compute_mac_matrices(
         modes, refs, M, K, R, t_idx,
         weightings   = cfg["weightings"],
@@ -269,6 +272,15 @@ def _run_simple(cfg: dict) -> None:
         subdomains   = subdomains,
         n_nodes      = n_nodes,
     )
+
+    if cfg["use_shear"]:
+        from common.mac_core import compute_mac
+        from simple_model.fem.internal_forces import build_shear_projection_matrix
+        print("Calculando MAC de tensiones cortantes...")
+        B       = build_shear_projection_matrix(
+            geo, config.E, config.G, config.A, config.IY, config.IZ, config.J
+        )
+        mac_matrices["Shear"] = compute_mac(B @ modes, B @ refs)
 
     idx = _select_top_from_matrices(mac_matrices, cfg["top_modes"])
     _print_identification_table(mac_matrices, idx, freq, short_names, title)
@@ -382,6 +394,11 @@ def _interactive_config(model: str) -> dict:
     # --- Rigid body removal ---
     use_rigid = _ask_yes("¿Aplicar rigid-body removal a la referencia?", default=True)
 
+    # --- Shear MAC (solo simple) ---
+    use_shear = False
+    if model == "simple":
+        use_shear = _ask_yes("¿Calcular también MAC basado en tensiones cortantes?", default=False)
+
     # --- Subdomain (simple, BIW y TB) ---
     subdomain = False
     if model == "simple" or model == "ansa":
@@ -425,6 +442,8 @@ def _interactive_config(model: str) -> dict:
             print(f"  Remove CONM2 : {remove_conm2}")
     print(f"  Ponderaciones: {weightings}")
     print(f"  Rigid removal: {use_rigid}")
+    if model == "simple":
+        print(f"  Shear MAC    : {use_shear}")
     print(f"  Subdomains   : {subdomain}")
     if model == "simple":
         print(f"  Ref cases    : {[rc+1 for rc in ref_cases]}")
@@ -437,6 +456,7 @@ def _interactive_config(model: str) -> dict:
     return dict(
         weightings   = weightings,
         use_rigid    = use_rigid,
+        use_shear    = use_shear,
         subdomain    = subdomain,
         ref_cases    = ref_cases,
         top_modes    = top_modes,
