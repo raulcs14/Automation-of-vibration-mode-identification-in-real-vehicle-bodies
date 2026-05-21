@@ -226,16 +226,32 @@ def main():
     W = {1: None, 2: W_mass, 3: W_stif, 4: W_ener}[w_idx]
     mac = compute_mac(Phi_f, Psi_f, W)
 
+    # --- MAC shear (simple model only) --------------------------------------
+    mac_shear = None
+    if model_type == "simple" and ask_yn("Compute also shear-force MAC?"):
+        from simple_model.geometry.chassis    import build_chassis_geometry
+        from simple_model.fem.internal_forces import build_shear_projection_matrix
+        import config
+        geo     = build_chassis_geometry("torsion")
+        B       = build_shear_projection_matrix(
+            geo, config.E, config.G, config.A, config.IY, config.IZ, config.J
+        )
+        mac_shear = compute_mac(B @ modes, B @ ref)
+
     # --- Print ranking & plot -----------------------------------------------
     TOP_N = 20
     print_ranking(mac, freq, title, ref_names, mode_offset, top_n=TOP_N)
+    if mac_shear is not None:
+        print_ranking(mac_shear, freq, title + " | Shear", ref_names, mode_offset, top_n=TOP_N)
 
-    # Select top-N modes by best MAC, then sort by mode number for the plot
     best_mac = mac.max(axis=1)
-    top_idx = np.sort(np.argsort(best_mac)[-TOP_N:])
+    top_idx  = np.sort(np.argsort(best_mac)[-TOP_N:])
 
     mode_labels = [f"Mode {mode_offset + i + 1} ({freq[i]:.2f} Hz)" for i in top_idx]
     plot_mac_matrix(mac[top_idx, :], mode_labels, ref_names, title=title)
+    if mac_shear is not None:
+        plot_mac_matrix(mac_shear[top_idx, :], mode_labels, ref_names,
+                        title=title + " | Shear")
     plt.show()
 
 
