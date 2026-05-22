@@ -18,6 +18,33 @@ from common.interaction  import ask as _ask, ask_multi as _ask_multi, ask_int as
 # ---------------------------------------------------------------------------
 
 
+def _run_evaluation(
+    mac_matrices: dict,
+    target_ref_idx: int,
+    target_name: str,
+    freq: np.ndarray,
+    show_plot: bool,
+    mode_offset: int = 0,
+    threshold: float = 0.1,
+) -> None:
+    """Compute and display discriminability metrics for all MAC variants."""
+    from common.mac_evaluation import (
+        evaluate_mac_methods, print_evaluation_table,
+        plot_evaluation, plot_mac_distribution,
+    )
+    results = evaluate_mac_methods(mac_matrices, target_ref_idx=target_ref_idx,
+                                   threshold=threshold)
+    print_evaluation_table(results, target_name=target_name, threshold=threshold,
+                           mode_offset=mode_offset, freq=freq)
+    if show_plot:
+        title_base = f"MAC evaluation — target: {target_name}"
+        plot_evaluation(results, freq=freq, target_name=target_name,
+                        threshold=threshold, mode_offset=mode_offset, title=title_base)
+        plot_mac_distribution(mac_matrices, target_ref_idx=target_ref_idx,
+                              freq=freq, target_name=target_name,
+                              mode_offset=mode_offset, title=title_base)
+
+
 def _select_top_from_matrices(mac_matrices: dict, n: int) -> np.ndarray:
     """Select top-n modes by best MAC value across all variants and references."""
     best_per_mode = np.stack(
@@ -289,6 +316,14 @@ def _run_simple(cfg: dict) -> None:
         _plot(mac_matrices, idx, freq, short_names, title)
         plt.show()
 
+    if cfg.get("evaluate"):
+        torsion_idx = short_names.index("Torsion") if "Torsion" in short_names else 0
+        _run_evaluation(mac_matrices, target_ref_idx=torsion_idx,
+                        target_name=short_names[torsion_idx], freq=freq,
+                        show_plot=cfg["show_plot"])
+        if cfg["show_plot"]:
+            plt.show()
+
 
 def _run_ansa(cfg: dict) -> None:
     from seat_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
@@ -355,6 +390,14 @@ def _run_ansa(cfg: dict) -> None:
     if cfg["show_plot"]:
         _plot(mac_matrices, idx, freq, SHORT_NAMES, title, mode_offset=N_RIGID_BODY_MODES)
         plt.show()
+
+    if cfg.get("evaluate"):
+        torsion_idx = SHORT_NAMES.index("Torsion") if "Torsion" in SHORT_NAMES else 0
+        _run_evaluation(mac_matrices, target_ref_idx=torsion_idx,
+                        target_name=SHORT_NAMES[torsion_idx], freq=freq,
+                        show_plot=cfg["show_plot"], mode_offset=N_RIGID_BODY_MODES)
+        if cfg["show_plot"]:
+            plt.show()
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +474,10 @@ def _interactive_config(model: str) -> dict:
     # --- Plot ---
     show_plot = _ask_yes("¿Mostrar gráfica de barras?", default=True)
 
+    # --- Evaluation ---
+    evaluate = _ask_yes("¿Calcular métricas de discriminabilidad (evaluación comparativa)?",
+                        default=True)
+
     print("\n" + "─"*52)
     print("  Resumen de configuración")
     print("─"*52)
@@ -451,6 +498,7 @@ def _interactive_config(model: str) -> dict:
     if "Energy" in weightings:
         print(f"  f0 energy    : {f0_energy} Hz")
     print(f"  Gráfica      : {show_plot}")
+    print(f"  Evaluación   : {evaluate}")
     print("─"*52)
 
     return dict(
@@ -462,6 +510,7 @@ def _interactive_config(model: str) -> dict:
         top_modes    = top_modes,
         f0_energy    = f0_energy,
         show_plot    = show_plot,
+        evaluate     = evaluate,
         ansa_variant = ansa_variant,
         remove_conm2 = remove_conm2,
     )

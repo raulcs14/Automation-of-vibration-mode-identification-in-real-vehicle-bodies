@@ -211,12 +211,13 @@ def _configure_modal() -> dict:
         [("disp",    "DISP    — nodal displacements (eigenvectors)"),
          ("stress",  "STRESS  — element stresses (incl. shear)"),
          ("force",   "FORCE   — element forces (membrane/bending)"),
-         ("gpforce", "GPFORCE — grid point force balance per element"),],
+         ("gpforce", "GPFORCE — grid point force balance per element"),
+         ("ese",     "ESE     — element strain energy (per mode)"),],
         multi=True,
     )
     if not outputs:
-        outputs = ["disp", "stress", "force", "gpforce"]
-        print("  (no selection — using default: DISP + STRESS + FORCE + GPFORCE)")
+        outputs = ["disp", "stress", "force", "gpforce", "ese"]
+        print("  (no selection — using default: DISP + STRESS + FORCE + GPFORCE + ESE)")
 
     patches = {
         "EIGRL,": f"EIGRL,3,{freq_min},{freq_max}.",
@@ -224,6 +225,7 @@ def _configure_modal() -> dict:
         "STRESS(REAL,PUNCH": "STRESS(REAL,PUNCH,SORT2) = ALL" if "stress"  in outputs else "$STRESS omitted",
         "FORCE(REAL,PUNCH":  "FORCE(REAL,PUNCH,SORT2)  = ALL" if "force"   in outputs else "$FORCE omitted",
         "GPFORCE(PUNCH":     "GPFORCE(PUNCH,SORT2)     = ALL" if "gpforce" in outputs else "$GPFORCE omitted",
+        "ESE(PLOT)":         "ESE(PLOT)                = ALL" if "ese"     in outputs else "$ESE omitted",
     }
 
     return {"patches": patches}
