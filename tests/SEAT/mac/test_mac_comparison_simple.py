@@ -15,7 +15,7 @@ Shows:
   2. Summary table printed to console
 
 Run from anywhere:
-    py -3 tests/test_mac_comparison_simple.py
+    py -3 tests/SEAT/mac/test_mac_comparison_simple.py
 """
 
 import sys

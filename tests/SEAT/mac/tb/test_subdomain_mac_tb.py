@@ -12,13 +12,13 @@ without CONM2 (lumped mass) node removal.  Four variants are compared:
 Weighting is chosen interactively: Identity / Mass / Stiffness / Energy.
 
 Run from anywhere:
-    py -3 tests/SEAT/test_subdomain_mac_tb.py
+    py -3 tests/SEAT/mac/tb/test_subdomain_mac_tb.py
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # tests/
 
 import numpy as np
 import matplotlib.pyplot as plt

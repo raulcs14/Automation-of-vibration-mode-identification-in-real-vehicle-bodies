@@ -4,12 +4,12 @@ Visual inspection of shell subdomains (PID zones) for BIW or TB.
 Node cloud is coloured by subdomain; 2-D projections are also shown.
 
 Run from anywhere:
-    py -3 tests/SEAT/test_visualize_subdomains_biw.py
+    py -3 tests/SEAT/mac/biw/test_visualize_subdomains_biw.py
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 
 import numpy as np
 import matplotlib.pyplot as plt
