@@ -8,13 +8,13 @@ Flow:
      reference, and print + plot the result.
 
 Run from anywhere:
-    py -3 tests/SEAT/test_subdomain_vectors_biw.py
+    py -3 tests/SEAT/mac/biw/test_subdomain_vectors_biw.py
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # tests/
 
 import numpy as np
 import matplotlib.pyplot as plt
