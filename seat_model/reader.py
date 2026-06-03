@@ -1,12 +1,9 @@
 """
 Readers for ANSA/Nastran outputs:
-  - H5 file  -> M, K matrices + node coordinates (Epilysis G-set, both BIW and TB)
-  - F06 file -> eigenfrequencies (fallback when frequencies.csv is absent)
-  - BDF      -> CONM2 node IDs (TB only, for optional mass-node removal)
-  - CSV      -> mode shapes and reference displacements
+  - H5 (Epilysis modal/static output) -> eigenvectors, displacements, nodes, CONM2 IDs
+  - H5 (PARAM,MAT2HDF matrices)       -> K, M sparse matrices
 """
 
-import re
 import h5py
 import numpy as np
 import scipy.sparse as sp
@@ -92,6 +89,140 @@ def read_h5(h5_path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# HDF5 reader (MDLPRM,HDF5,1) — eigenvectors, displacements, nodes, CONM2
+# ---------------------------------------------------------------------------
+
+def _hdf5_nodes(f) -> tuple:
+    """Return (node_ids, node_xyz) from the Epilysis INPUT/NODE/GRID dataset."""
+    grid = f["EPILYSIS/INPUT/NODE/GRID"][:]
+    node_ids = grid["ID"].astype(int)
+    node_xyz = np.array([row["X"] for row in grid], dtype=float)   # (nNodes, 3)
+    return node_ids, node_xyz
+
+
+def _hdf5_split_by_domain(flat_ds, domains_ds, node_ids: np.ndarray) -> np.ndarray:
+    """
+    Reconstruct a (nNodes, 6, nDomains) array from a flat Epilysis result dataset.
+
+    The flat dataset has one row per (node, domain) pair identified by DOMAIN_ID.
+    INDEX/.../POSITION+LENGTH could be used, but iterating unique domain IDs is
+    simpler and robust.
+
+    Returns ndarray shape (nNodes, 6, nDomains), columns = [X,Y,Z,RX,RY,RZ].
+    """
+    flat  = flat_ds[:]
+    n_nodes   = len(node_ids)
+    node_id_to_idx = {nid: i for i, nid in enumerate(node_ids)}
+
+    domain_ids = np.unique(flat["DOMAIN_ID"])
+    n_domains  = len(domain_ids)
+    result     = np.zeros((n_nodes, 6, n_domains), dtype=float)
+
+    for col, did in enumerate(domain_ids):
+        mask  = flat["DOMAIN_ID"] == did
+        chunk = flat[mask]
+        for row in chunk:
+            idx = node_id_to_idx.get(int(row["ID"]))
+            if idx is not None:
+                result[idx, :, col] = [row["X"], row["Y"], row["Z"],
+                                       row["RX"], row["RY"], row["RZ"]]
+    return result, domain_ids
+
+
+def read_hdf5_modal(hdf5_path: Path) -> dict:
+    """
+    Read modal results from an Epilysis/Nastran H5 output file (MDLPRM,HDF5,1).
+
+    Structure used:
+      EPILYSIS/INPUT/NODE/GRID                → node IDs + coordinates
+      EPILYSIS/RESULT/SUMMARY/EIGENVALUE      → FREQ column [Hz], ordered by MODE
+      EPILYSIS/RESULT/NODAL/EIGENVECTOR       → flat (ID, X,Y,Z,RX,RY,RZ, DOMAIN_ID)
+      EPILYSIS/RESULT/DOMAINS                 → maps DOMAIN_ID → MODE number
+
+    Returns:
+      node_ids : (nNodes,)          GRID IDs in input order
+      node_xyz : (nNodes, 3)        coordinates [model units]
+      freq     : (nModes,)          frequencies [Hz], sorted by mode number
+      modes    : (6*nNodes, nModes) interleaved [Ux,Uy,Uz,Rx,Ry,Rz] per node
+    """
+    with h5py.File(hdf5_path, "r") as f:
+        node_ids, node_xyz = _hdf5_nodes(f)
+
+        # Frequencies: SUMMARY/EIGENVALUE sorted by MODE field
+        eig_ds = f["EPILYSIS/RESULT/SUMMARY/EIGENVALUE"][:]
+        order  = np.argsort(eig_ds["MODE"])
+        freq   = eig_ds["FREQ"][order].astype(float)          # (nModes,)
+
+        # Eigenvectors: flat array, split by DOMAIN_ID
+        ev_flat   = f["EPILYSIS/RESULT/NODAL/EIGENVECTOR"]
+        domains   = f["EPILYSIS/RESULT/DOMAINS"][:]
+        result, domain_ids = _hdf5_split_by_domain(ev_flat, domains, node_ids)
+        # result: (nNodes, 6, nDomains) — domains ordered by DOMAIN_ID ascending
+
+        # Map domain order to mode order using DOMAINS table
+        # domains["ID"] → domains["MODE"] (1-based)
+        dom_id_to_mode = {int(d["ID"]): int(d["MODE"]) for d in domains}
+        mode_order = np.array([dom_id_to_mode[int(did)] for did in domain_ids])
+        sort_idx   = np.argsort(mode_order)
+        result     = result[:, :, sort_idx]                   # (nNodes, 6, nModes)
+
+    n_nodes, _, n_modes = result.shape
+    # Interleave to (6*nNodes, nModes): [Ux,Uy,Uz,Rx,Ry,Rz] per node
+    modes = result.reshape(6 * n_nodes, n_modes, order='C')
+
+    # Trim freq to actual number of domains (SUMMARY may include DOMAIN 0 summary row)
+    freq = freq[:n_modes]
+
+    return dict(node_ids=node_ids, node_xyz=node_xyz, freq=freq, modes=modes)
+
+
+def read_hdf5_static(hdf5_path: Path) -> dict:
+    """
+    Read static displacement results from an Epilysis/Nastran H5 output file.
+
+    Structure used:
+      EPILYSIS/INPUT/NODE/GRID             → node IDs + coordinates
+      EPILYSIS/RESULT/NODAL/DISPLACEMENT   → flat (ID, X,Y,Z,RX,RY,RZ, DOMAIN_ID)
+      EPILYSIS/RESULT/DOMAINS              → maps DOMAIN_ID → SUBCASE number
+
+    Returns:
+      node_ids : (nNodes,)         GRID IDs in input order
+      node_xyz : (nNodes, 3)       coordinates
+      refs     : (6*nNodes, nRefs) interleaved [Ux,Uy,Uz,Rx,Ry,Rz] per node,
+                                   one column per subcase sorted by SUBCASE number
+    """
+    with h5py.File(hdf5_path, "r") as f:
+        node_ids, node_xyz = _hdf5_nodes(f)
+
+        disp_flat = f["EPILYSIS/RESULT/NODAL/DISPLACEMENT"]
+        domains   = f["EPILYSIS/RESULT/DOMAINS"][:]
+        result, domain_ids = _hdf5_split_by_domain(disp_flat, domains, node_ids)
+
+        # Sort columns by SUBCASE number
+        dom_id_to_sub = {int(d["ID"]): int(d["SUBCASE"]) for d in domains}
+        sub_order  = np.array([dom_id_to_sub[int(did)] for did in domain_ids])
+        sort_idx   = np.argsort(sub_order)
+        result     = result[:, :, sort_idx]                   # (nNodes, 6, nRefs)
+
+    n_nodes, _, n_refs = result.shape
+    refs = result.reshape(6 * n_nodes, n_refs, order='C')
+    return dict(node_ids=node_ids, node_xyz=node_xyz, refs=refs)
+
+
+def read_hdf5_conm2_node_ids(hdf5_path: Path) -> np.ndarray:
+    """
+    Extract GRID IDs referenced by CONM2 elements from an Epilysis H5 file.
+    Returns sorted unique (nCONM2,) int array. Empty array if none present.
+    """
+    with h5py.File(hdf5_path, "r") as f:
+        conm2_path = "EPILYSIS/INPUT/ELEMENT/CONM2"
+        if conm2_path not in f:
+            return np.array([], dtype=int)
+        grid_ids = np.asarray(f[conm2_path]["G"], dtype=int)
+    return np.unique(grid_ids)
+
+
+# ---------------------------------------------------------------------------
 # DOF-set mask helper (used in tests and for G-set -> A-set filtering)
 # ---------------------------------------------------------------------------
 
@@ -108,125 +239,4 @@ def aset_dof_mask_from_gset(aset_node_ids: np.ndarray,
     return np.repeat(node_in_aset, 6)
 
 
-# ---------------------------------------------------------------------------
-# BDF readers (node coordinates and CONM2 IDs)
-# ---------------------------------------------------------------------------
-
-_NASTRAN_FLOAT = re.compile(r"([+-]?\d+\.?\d*)([+-]\d+)$")
-
-
-def _parse_nastran_float(s: str) -> float:
-    """Parse a Nastran real, handling implicit-exponent form (e.g. '1.5-3' = 1.5e-3)."""
-    s = s.strip()
-    m = _NASTRAN_FLOAT.match(s)
-    if m:
-        return float(m.group(1) + "e" + m.group(2))
-    return float(s)
-
-
-def read_bdf_node_coords(bdf_paths: list[Path]) -> dict[int, np.ndarray]:
-    """
-    Parse Nastran BDF files and return a dict mapping GRID ID -> xyz (shape (3,)).
-
-    Uses Nastran small-field fixed-format (8-char columns):
-        cols  1- 8: GRID
-        cols  9-16: ID
-        cols 17-24: CP (may be blank)
-        cols 25-32: X1
-        cols 33-40: X2
-        cols 41-48: X3
-    """
-    coords: dict[int, np.ndarray] = {}
-    for bdf_path in bdf_paths:
-        for line in bdf_path.read_text(encoding="latin-1").splitlines():
-            if not line.upper().startswith("GRID"):
-                continue
-            line = line.ljust(48)
-            try:
-                nid = int(line[8:16])
-                xyz = np.array([_parse_nastran_float(line[24:32]),
-                                _parse_nastran_float(line[32:40]),
-                                _parse_nastran_float(line[40:48])])
-            except ValueError:
-                continue
-            coords[nid] = xyz
-    return coords
-
-
-def read_bdf_conm2_node_ids(bdf_paths: list[Path]) -> np.ndarray:
-    """
-    Parse Nastran BDF files and return the GRID IDs referenced by CONM2 elements,
-    sorted ascending.
-
-    CONM2 small-field format:
-        cols  1- 8: CONM2
-        cols  9-16: EID  (element ID)
-        cols 17-24: G    (GRID ID the mass is attached to)
-    """
-    node_ids: set[int] = set()
-    for bdf_path in bdf_paths:
-        for line in bdf_path.read_text(encoding="latin-1").splitlines():
-            if not line.upper().startswith("CONM2"):
-                continue
-            line = line.ljust(24)
-            try:
-                node_ids.add(int(line[8:16]))  # EID, not used
-                node_ids.discard(int(line[8:16]))
-                node_ids.add(int(line[16:24]))  # G — the attached GRID
-            except ValueError:
-                continue
-    return np.array(sorted(node_ids), dtype=int)
-
-
-# ---------------------------------------------------------------------------
-# F06 reader (frequencies)
-# ---------------------------------------------------------------------------
-
-def read_frequencies_f06(f06_path: Path) -> np.ndarray:
-    """
-    Parse a Nastran .f06 file and return an array of frequencies [Hz]
-    for each mode (including rigid-body modes with ~0 Hz).
-    """
-    pattern = re.compile(
-        r"^\s+(\d+)\s+"          # mode number
-        r"[\deE+\-\.]+\s+"       # eigenvalue
-        r"[\deE+\-\.]+\s+"       # radians/s
-        r"([\deE+\-\.]+)"        # CYCLES (Hz)
-    )
-    freqs = {}
-    with open(f06_path, "r", encoding="latin-1") as fh:
-        for line in fh:
-            m = pattern.match(line)
-            if m:
-                mode_n = int(m.group(1))
-                hz     = float(m.group(2))
-                freqs[mode_n] = hz
-
-    if not freqs:
-        raise ValueError(f"No frequency data found in {f06_path}")
-
-    n_modes = max(freqs.keys())
-    freq = np.array([freqs.get(i, 0.0) for i in range(1, n_modes + 1)])
-    return freq
-
-
-# ---------------------------------------------------------------------------
-# Generic CSV reader
-# ---------------------------------------------------------------------------
-
-def read_csv(csv_path: Path, dtype=float, flatten: bool = False,
-             ensure_2d: bool = False) -> np.ndarray:
-    """
-    Load a numeric CSV produced by the META export scripts.
-
-    dtype     : numpy dtype for the array (default float)
-    flatten   : return a 1-D array (for frequencies, node ID lists)
-    ensure_2d : if the loaded array is 1-D, reshape to (n, 1) (for reference vectors)
-    """
-    data = np.loadtxt(csv_path, delimiter=",", dtype=dtype)
-    if flatten:
-        return data.flatten()
-    if ensure_2d and data.ndim == 1:
-        data = data.reshape(-1, 1)
-    return data
 

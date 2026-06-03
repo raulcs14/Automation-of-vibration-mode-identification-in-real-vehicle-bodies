@@ -9,7 +9,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from common.utils        import translational_dof_indices as _translational_indices, densify as _densify
+from common.utils        import translational_dof_indices as _translational_indices
 from common.interaction  import ask as _ask, ask_multi as _ask_multi, ask_int as _ask_int, ask_yes as _ask_yes
 
 
@@ -242,8 +242,8 @@ def _run_simple(cfg: dict) -> None:
 
     modes    = dyn["modes"]
     freq     = dyn["freq"]
-    M        = _densify(dyn["M"])
-    K        = _densify(dyn["K"])
+    M        = dyn["M"]
+    K        = dyn["K"]
     R        = dyn["R"]
     refs_all = stat["ref_moves_raw"]   # (GDof, nRefs)
     GDof     = modes.shape[0]

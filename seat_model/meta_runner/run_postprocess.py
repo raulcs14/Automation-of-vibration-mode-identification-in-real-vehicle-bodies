@@ -7,11 +7,16 @@ Usage:
 Requires meta_runner/config/paths.py (copy from paths.py.example and fill
 in your local paths — the file is gitignored).
 
-Tasks that need META (SOL103/SOL101 result extraction) are run as:
-    meta_post64.bat -b -s <script.py>
-with paths passed via environment variables.
+NOTE: modal eigenvectors, frequencies, and static reference displacements are
+read directly from the Epilysis H5 output files by the pipeline (seat_model/
+modal_analysis.py and static_model.py). META is no longer needed for those.
 
-Tasks that are pure Python (f06 parsing, matrix copy) run in-process.
+Tasks still requiring META:
+    subdomains  — export PID → GRID ID mapping to JSON
+
+Tasks that are pure Python (no META needed):
+    matrices    — copy K/M H5 to meta/ folder
+    h5_uset     — extract DOF set info from H5 (diagnostic)
 """
 
 import os
@@ -110,22 +115,6 @@ def _run_meta_script(script_name: str, env_extra: dict) -> int:
 # Task runners
 # ---------------------------------------------------------------------------
 
-def _run_modal(model: str, inputs: dict, output_dir: Path) -> int:
-    return _run_meta_script("export_modes.py", {
-        "META_MODAL_DAT":  inputs["modal_dat"],
-        "META_MODAL_OP2":  inputs["modal_op2"],
-        "META_OUTPUT_DIR": output_dir / "modal",
-    })
-
-
-def _run_static(model: str, inputs: dict, output_dir: Path) -> int:
-    return _run_meta_script("export_static_reference.py", {
-        "META_STATIC_DAT": inputs["static_dat"],
-        "META_STATIC_OP2": inputs["static_op2"],
-        "META_OUTPUT_DIR": output_dir / "static",
-    })
-
-
 def _run_subdomains(model: str, inputs: dict, output_dir: Path) -> int:
     return _run_meta_script("export_biw_subdomains.py", {
         "META_MODAL_DAT":  inputs["modal_dat"],
@@ -160,11 +149,9 @@ def _run_h5_uset(_model: str, inputs: dict, output_dir: Path) -> int:
 # ---------------------------------------------------------------------------
 
 _TASKS = {
-    "modal":      ("Modal eigenvectors (SOL103 → CSV)",                    _run_modal),
-    "static":     ("Static reference displacements (SOL101 → CSV)",        _run_static),
-    "subdomains": ("Shell subdomains (PID → GRID IDs → JSON)",             _run_subdomains),
-    "matrices":   ("Copy K/M matrices to meta/ output folder",             _run_matrices),
-    "h5_uset":    ("Extract A-set / G-set node IDs from H5",               _run_h5_uset),
+    "subdomains": ("Shell subdomains — PID → GRID IDs → JSON  [META required]",  _run_subdomains),
+    "matrices":   ("Copy K/M matrices H5 to meta/ folder      [pure Python]",    _run_matrices),
+    "h5_uset":    ("Extract DOF set node IDs from H5           [pure Python]",    _run_h5_uset),
 }
 
 # ---------------------------------------------------------------------------
