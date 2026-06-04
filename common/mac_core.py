@@ -4,7 +4,6 @@ Equivalent to MAC_calculator.m
 """
 
 import numpy as np
-from typing import Optional
 
 
 def compute_mac(Phi: np.ndarray, Psi: np.ndarray,
@@ -48,3 +47,13 @@ def compute_mac(Phi: np.ndarray, Psi: np.ndarray,
 def best_mac_per_mode(mac: np.ndarray) -> np.ndarray:
     """Return (nModes,) array of max MAC value over all references."""
     return mac.max(axis=1)
+
+
+def select_top_modes(variants: dict, n: int) -> np.ndarray:
+    """
+    Given a dict of label -> (nModes,) best-MAC arrays, return indices of the
+    n modes with the highest MAC in any variant, sorted by ascending index.
+    """
+    stacked = np.stack(list(variants.values()), axis=0)
+    best    = stacked.max(axis=0)
+    return np.sort(np.argsort(best)[-n:])

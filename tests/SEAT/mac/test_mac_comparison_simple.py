@@ -34,7 +34,7 @@ from common.mac_core                      import compute_mac
 from common.rigid_body                    import remove_rigid_body_component
 from common.subdomain                     import average_zones, reduce_mk_by_subdomains
 from common.utils                         import translational_dof_indices
-from test_helpers                         import best_mac_per_mode
+from common.mac_core                      import best_mac_per_mode, select_top_modes
 
 REF_CASE   = 3        # 0-based index → case 4 "Roll/Torsion global"
 F0_ENERGY  = 40.0
@@ -89,12 +89,6 @@ def compute_all_variants(modes, ref, M, K, R, t_idx,
             results[label] = best_mac_per_mode(compute_mac(Phi_z, psi2, W))
 
     return results
-
-
-def select_top_modes(variants: dict, n: int) -> np.ndarray:
-    stacked = np.stack(list(variants.values()), axis=0)
-    best    = stacked.max(axis=0)
-    return np.sort(np.argsort(best)[-n:])
 
 
 def print_summary(variants: dict, idx: np.ndarray, freq: np.ndarray) -> None:

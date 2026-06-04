@@ -15,7 +15,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from simple_model.analysis.static_model import run_static_model, REF_NAMES
 from simple_model.geometry.chassis import _draw_mesh_lines, _set_equal_axes
-from test_helpers import ask_case as _ask_case, plot_deformed as _plot_deformed
+from common.visualization.mesh import plot_deformed as _plot_deformed
+from test_helpers import ask_case as _ask_case
 
 
 def plot_deformed(ax, nc, en, u_raw, name, target_frac=0.08):

@@ -27,7 +27,8 @@ from common.rigid_body                    import remove_rigid_body_component
 from common.subdomain                     import average_zones
 from common.visualization.vectors         import plot_subdomain_vectors
 from common.utils                         import translational_dof_indices
-from test_helpers                         import ask_case as _ask_case, ask_yn, plot_deformed as _plot_deformed
+from common.visualization.mesh import plot_deformed as _plot_deformed
+from test_helpers               import ask_case as _ask_case, ask_yn
 
 
 def ask_case(n_cases):

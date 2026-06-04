@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 from seat_model.modal_analysis import run_modal_analysis, N_RIGID_BODY_MODES
 from seat_model.static_model    import run_static_model, REF_NAMES
-from common.mac_core            import compute_mac
+from common.mac_core            import compute_mac, best_mac_per_mode, select_top_modes
 from common.rigid_body          import remove_rigid_body_component
 from common.visualization.mac_plot import plot_mac_matrix
 from common.utils               import translational_dof_indices, densify
@@ -30,14 +30,6 @@ F0_ENERGY = 40.0
 
 
 N_TOP_MODES = 20
-
-
-def top_modes(mac: np.ndarray, n: int = N_TOP_MODES) -> np.ndarray:
-    """Return indices of the n modes with highest MAC value (any reference),
-    sorted by ascending index (i.e. ascending frequency)."""
-    best_per_mode = mac.max(axis=1)
-    top_idx = np.argsort(best_per_mode)[-n:]
-    return np.sort(top_idx)
 
 
 def print_ranking(mac: np.ndarray, freq: np.ndarray, label: str,
@@ -113,7 +105,7 @@ def main():
         mac = compute_mac(Phi_t, Psi_t, W)
 
     # --- Select top 30 modes by MAC value (sorted by frequency) ------------
-    idx30 = top_modes(mac)
+    idx30 = select_top_modes({"mac": best_mac_per_mode(mac)}, N_TOP_MODES)
     mac30  = mac[idx30, :]
     freq30 = freq[idx30]
 

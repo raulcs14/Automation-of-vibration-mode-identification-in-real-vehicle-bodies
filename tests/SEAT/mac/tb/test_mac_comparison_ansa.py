@@ -30,7 +30,8 @@ from seat_model.static_model    import run_static_model, REF_NAMES
 from common.mac_core            import compute_mac
 from common.rigid_body          import remove_rigid_body_component
 from common.utils               import translational_dof_indices, densify
-from test_helpers               import best_mac_per_mode, ask_variant
+from common.mac_core            import best_mac_per_mode, select_top_modes
+from test_helpers               import ask_variant
 
 F0_ENERGY  = 40.0
 N_TOP_MODES = 20   # modes shown in the comparison plot
@@ -64,14 +65,6 @@ def compute_all_variants(modes, ref, M_dense, K_dense, R, t_idx) -> dict:
             results[label] = best_mac_per_mode(mac)
 
     return results
-
-
-def select_top_modes(variants: dict, n: int) -> np.ndarray:
-    """Indices of the n modes that have the highest MAC in any variant."""
-    stacked = np.stack(list(variants.values()), axis=0)  # (nVariants, nModes)
-    best    = stacked.max(axis=0)
-    top_idx = np.argsort(best)[-n:]
-    return np.sort(top_idx)
 
 
 def print_summary(variants: dict, idx: np.ndarray, freq: np.ndarray) -> None:
