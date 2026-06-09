@@ -1,97 +1,125 @@
 # Automation of Vibration Mode Identification in Real Vehicle Bodies
 
-TFM project implementing an automated pipeline for identifying and classifying vibration modes of vehicle body structures using Finite Element Analysis (FEA) and Modal Assurance Criterion (MAC).
-
-## Overview
-
-The pipeline correlates dynamic vibration modes (obtained from FEA or experimental data) against a library of known static reference deformation patterns. This allows automatic labelling of modes as heave, pitch, torsion, roll, etc.
+TFM project implementing an automated pipeline for identifying and classifying vibration modes of vehicle body structures using FEA, Modal Assurance Criterion (MAC), and geometric torsion scoring.
 
 Two models are supported:
 
-- **Simple model** — analytical 3D beam-frame chassis (35 nodes, ~80 elements) assembled from scratch in Python/NumPy.
-- **ANSA model** — full vehicle FE model solved in ANSA/Meta, results imported for MAC analysis.
+- **Simple model** — analytical 3D beam-frame chassis built in Python/NumPy. No external files required, runs out of the box.
+- **SEAT model** — full vehicle FE model (Body in White and Trimmed Body) solved in ANSA/Epilysis. Requires HDF5 result files and a local paths configuration.
 
-## Project Structure
-
-```
-├── main.py                    # Pipeline entry point
-├── config.py                  # Global material and section properties
-│
-├── simple_model/              # Analytical beam-frame chassis
-│   ├── geometry/
-│   │   └── chassis.py         # Node coordinates, element connectivity, subdomains
-│   ├── fem/
-│   │   ├── stiffness.py       # Global stiffness matrix K
-│   │   ├── mass.py            # Global consistent mass matrix M
-│   │   └── solver.py          # Eigenvalue solver + inertia relief static solver
-│   └── analysis/
-│       ├── static_model.py    # 11 reference load cases → normalized displacements
-│       ├── modal_analysis.py  # Free-free modal analysis → elastic modes
-│       └── mac.py             # MAC correlation (mass- and stiffness-weighted)
-│
-├── ansa_model/                # ANSA/Meta full vehicle model
-│   ├── reader.py              # Parse ANSA/Meta output files
-│   ├── modal_analysis.py      # Post-process imported modes
-│   └── mac.py                 # MAC correlation for the full model
-│
-├── common/                    # Shared utilities (model-agnostic)
-│   ├── mac_core.py            # MAC formula with arbitrary weighting matrix
-│   ├── subdomain.py           # Subdomain averaging and Galerkin reduction
-│   ├── rigid_body.py          # Rigid-body component removal
-│   └── visualization/
-│       ├── mesh.py            # Mesh + Hermite-interpolated deformed shape
-│       ├── mac_plot.py        # MAC heatmap
-│       ├── vectors.py         # Node and subdomain vector arrows
-│       └── animation.py       # Mode shape animation
-│
-└── data/                      # Generated output files (git-ignored)
-    ├── simple_model/
-    └── ansa_model/
-```
-
-## Pipeline
-
-```
-1. Static_Model      →  11 normalized reference displacement patterns
-2. Modal_Analysis    →  30 elastic free-free vibration modes + frequencies
-3. MAC_Analysis      →  MAC matrices (full + subdomain), correlation ranking, heatmaps
-4. Animation         →  (optional) animated mode shape visualization
-```
-
-Steps 1–2 are independent and can run in either order. Step 3 requires both outputs.
-
-## FEM Formulation
-
-| Property | Value |
-|---|---|
-| Element type | 3D Euler–Bernoulli beam (12 DOF) |
-| DOFs per node | 6 (Ux, Uy, Uz, Rx, Ry, Rz) |
-| Nodes / Elements (simple model) | 35 / ~80 |
-| Total DOFs | 210 |
-| Boundary conditions | Free-free (inertia relief) |
-| Mass formulation | Consistent |
-
-Material properties (steel): E = 210 GPa, G = 84 GPa, ρ = 7850 kg/m³.
-
-## MAC Definition
-
-$$\text{MAC}(i,j) = \frac{|\varphi_i^T W \psi_j|^2}{(\varphi_i^T W \varphi_i)(\psi_j^T W \psi_j)}$$
-
-where **φ** are dynamic modes, **ψ** are static references, and **W** is a weighting matrix (identity, mass M, stiffness K, or energy M·ω²+K).
+---
 
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install numpy scipy matplotlib h5py
 ```
 
-## Usage
+---
+
+## Quick start — Simple model
+
+No configuration needed. Just run:
 
 ```bash
 python main.py
 ```
 
-Results are saved to `data/simple_model/` as `.npz` files.
+Select **Simple model** in the menu and choose a flow (MAC or Torsion ID).
+
+---
+
+## Setup — SEAT model (BIW / TB)
+
+The SEAT model reads results produced by ANSA/Epilysis. Follow these steps before running.
+
+### 1. Configure local paths
+
+```bash
+cp seat_model/epilysis_runner/config/paths.py.example \
+   seat_model/epilysis_runner/config/paths.py
+```
+
+Open `paths.py` and set `EPILYSIS_EXE` to the path of your local Epilysis executable:
+
+```python
+EPILYSIS_EXE = Path(r"C:\BETA_CAE_Systems\ansa_vXX.X.X\epilysis.bat")
+```
+
+`paths.py` is git-ignored — each user keeps their own copy.
+
+### 2. Place the ANSA input files
+
+Copy your `.dat` deck files into the corresponding input folders:
+
+```
+data/seat_model/
+├── BIW/ansa/
+│   ├── modal/input/       ← 000_Header_BIW_modal.dat
+│   ├── static/input/      ← 000_Header_BIW_static_reference.dat
+│   └── matrices/input/    ← 000_Header_BIW_getKM.dat
+└── TB/ansa/
+    ├── modal/input/       ← 000_Header_TB_modal.dat
+    ├── static/input/      ← 000_Header_TB_static_reference.dat
+    └── matrices/input/    ← 000_Header_TB_getKM.dat
+```
+
+### 3. Run the Epilysis analyses
+
+```bash
+python seat_model/epilysis_runner/run_analyses.py
+```
+
+This launches the modal, static, and matrix extraction analyses and writes the HDF5 result files to the corresponding `output/` folders.
+
+### 4. Run the pipeline
+
+```bash
+python main.py
+```
+
+Select **ANSA BIW** or **ANSA TB** and choose a flow.
+
+---
+
+## Flows
+
+### MAC — correlation with static reference shapes
+
+Correlates each dynamic mode against a set of static reference deformation patterns (heave, pitch, torsion, roll, etc.) using the MAC formula:
+
+$$\text{MAC}(i,j) = \frac{|\varphi_i^T W \psi_j|^2}{(\varphi_i^T W \varphi_i)(\psi_j^T W \psi_j)}$$
+
+Available weightings: **Identity**, **Mass (M)**, **Stiffness (K)**, **Energy (Mω² + K)**.
+
+Optional: remove the rigid-body component from the reference shapes before computing MAC.
+
+For the SEAT model, CONM2 mass nodes can be excluded from the DOF space before correlation.
+
+### Torsion ID — geometric torsion identification (SEAT only)
+
+Identifies torsional modes without reference shapes, using four multiplicative sub-scores:
+
+| Sub-score | What it measures |
+|---|---|
+| **linearity** | The θx(X) rotation profile is linear with significant amplitude |
+| **centering** | Rotation centre x₀ is near the geometric centre of the vehicle |
+| **antisym** | Left (Y > 0) and right (Y < 0) sides move in opposite directions |
+| **uniformity** | Mode energy is globally distributed (suppresses local modes) |
+
+**Combined score** = linearity × centering × antisym × uniformity ∈ [0, 1]
+
+Mode classification from signed antisymmetry scores:
+
+| Condition | Type |
+|---|---|
+| score_Uz > 0.5 | TORSION (opposite vertical motion) |
+| score_Uy > 0.5 | ROLLING (opposite lateral motion) |
+| score_Uz < −0.5 | BENDING-V (in-phase vertical motion) |
+| score_Uy < −0.5 | BENDING-L (in-phase lateral motion) |
+| otherwise | LOCAL / MIXED |
+
+---
 
 ## References
 
