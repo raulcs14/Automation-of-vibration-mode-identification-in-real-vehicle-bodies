@@ -17,7 +17,7 @@ def ask(prompt: str, options: list[str], default: int = 0) -> int:
             return default
         if raw.isdigit() and 1 <= int(raw) <= len(options):
             return int(raw) - 1
-        print(f"  Por favor introduce un número entre 1 y {len(options)}.")
+        print(f"  Please enter a number between 1 and {len(options)}.")
 
 
 def ask_multi(prompt: str, options: list[str]) -> list[int]:
@@ -25,7 +25,7 @@ def ask_multi(prompt: str, options: list[str]) -> list[int]:
     print(f"\n{prompt}")
     for i, opt in enumerate(options):
         print(f"  [{i+1}] {opt}")
-    print(f"  [0] Todas")
+    print(f"  [0] All")
     while True:
         raw = input("  > ").strip()
         if raw == "" or raw == "0":
@@ -37,7 +37,7 @@ def ask_multi(prompt: str, options: list[str]) -> list[int]:
                 return sorted(set(indices))
         except ValueError:
             pass
-        print(f"  Introduce números separados por coma (1-{len(options)}) o 0 para todas.")
+        print(f"  Enter comma-separated numbers (1-{len(options)}) or 0 for all.")
 
 
 def ask_int(prompt: str, default: int) -> int:
@@ -55,7 +55,7 @@ def ask_yes(prompt: str, default: bool = False) -> bool:
     raw = input(f"\n{prompt} [{yn}]: ").strip().lower()
     if raw == "":
         return default
-    return raw in ("s", "si", "sí", "y", "yes")
+    return raw in ("y", "yes")
 
 
 def ask_yn(prompt: str) -> bool:

@@ -2,7 +2,7 @@
 Visual test for MAC computation between dynamic modes and static reference shapes.
 
 Run from anywhere:
-    py -3 tests/test_mac.py
+    py -3 tests/common/test_mac.py
 
 Interactive flow
 ----------------
@@ -14,7 +14,7 @@ Interactive flow
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,7 +24,7 @@ from common.subdomain              import average_zones, reduce_mk_by_subdomains
 from common.rigid_body             import remove_rigid_body_component
 from common.visualization.mac_plot import plot_mac_matrix
 from common.utils                  import translational_dof_indices, densify
-from test_helpers                  import ask_yn, ask_weighting
+from tests.common.test_helpers     import ask_yn, ask_weighting
 
 F0_ENERGY = 40.0
 
@@ -36,7 +36,7 @@ def _ask_model() -> tuple[str, str]:
         "ANSA — Body in White (BIW)",
         "ANSA — Trimmed Body (TB)",
     ]
-    print("\nSelecciona el modelo:")
+    print("\nSelect model:")
     for i, opt in enumerate(options):
         print(f"  [{i+1}] {opt}")
     while True:
@@ -47,7 +47,7 @@ def _ask_model() -> tuple[str, str]:
                 return "simple", "Simple model"
             variant = ["BIW", "TB"][idx - 1]
             return "ansa", variant
-        print(f"  Por favor introduce un número entre 1 y {len(options)}.")
+        print(f"  Please enter a number between 1 and {len(options)}.")
 
 
 def _load_simple():
@@ -91,14 +91,14 @@ def _load_ansa(variant: str, remove_conm2: bool):
 
     conm2_node_ids = dyn.get("conm2_node_ids")
     if conm2_node_ids is not None and remove_conm2:
-        print("Eliminando DOFs de nodos CONM2...")
+        print("Removing CONM2 node DOFs...")
         space.remove_nodes(conm2_node_ids)
 
     subdomains = None
     if variant == "BIW":
         from seat_model.subdomains import build_biw_subdomains
         subdomains = build_biw_subdomains(space.node_ids, space.node_xyz)
-        print(f"  Subdominios BIW: {len(subdomains)} zonas")
+        print(f"  BIW subdomains: {len(subdomains)} zones")
 
     return dict(
         modes       = space.modes,
@@ -119,7 +119,6 @@ def print_ranking(mac: np.ndarray, freq: np.ndarray, label: str,
     best_ref_idx = mac.argmax(axis=1)
     best_ref_val = mac.max(axis=1)
 
-    # Sort modes by best MAC value descending, keep top_n
     order = np.argsort(best_ref_val)[::-1][:top_n]
 
     print(f"\n=== Top {top_n} modes by MAC  [{label}] ===")
@@ -230,7 +229,6 @@ def main():
     TOP_N = 20
     print_ranking(mac, freq, title, ref_names, mode_offset, top_n=TOP_N)
 
-    # Select top-N modes by best MAC, then sort by mode number for the plot
     best_mac = mac.max(axis=1)
     top_idx = np.sort(np.argsort(best_mac)[-TOP_N:])
 

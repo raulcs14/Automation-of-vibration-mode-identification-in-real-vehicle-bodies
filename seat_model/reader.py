@@ -209,6 +209,125 @@ def read_hdf5_static(hdf5_path: Path) -> dict:
     return dict(node_ids=node_ids, node_xyz=node_xyz, refs=refs)
 
 
+def read_hdf5_element_stress(hdf5_path: Path, mode: int) -> dict:
+    """
+    Read CQUAD4 and CTRIA3 in-plane stresses for a given mode number (1-based).
+
+    For each shell element the H5 stores two through-thickness fibre results:
+      QUAD4 fields : EID, FD1, X1, Y1, XY1, FD2, X2, Y2, XY2, DOMAIN_ID
+      TRIA3 fields : EID, FD1, X1, Y1, TXY1, FD2, X2, Y2, TXY2, DOMAIN_ID
+    where X/Y are in-plane normal stresses, XY/TXY is in-plane shear (τ_xy),
+    FD1/FD2 are the fibre distances (e.g. ±T/2).
+
+    The element centroid is computed as the mean of its corner node coordinates.
+
+    Returns a dict with keys:
+      eid        : (nElem,)    element IDs
+      centroid   : (nElem, 3)  centroid coordinates in model units (mm)
+      pid        : (nElem,)    property IDs
+      elem_type  : (nElem,)    element type string ('QUAD4' or 'TRIA3')
+      sigma_x1   : (nElem,)   σ_x  top fibre
+      sigma_y1   : (nElem,)   σ_y  top fibre
+      tau_xy1    : (nElem,)   τ_xy top fibre
+      sigma_x2   : (nElem,)   σ_x  bot fibre
+      sigma_y2   : (nElem,)   σ_y  bot fibre
+      tau_xy2    : (nElem,)   τ_xy bot fibre
+      tau_xy_avg : (nElem,)   mean(|τ_xy1|, |τ_xy2|) — scalar summary per element
+    """
+    with h5py.File(hdf5_path, "r") as f:
+        # --- node coordinates ---
+        grid = f["EPILYSIS/INPUT/NODE/GRID"][:]
+        nid_arr = grid["ID"].astype(int)
+        xyz_arr = np.array([row["X"] for row in grid], dtype=float)  # (nNodes, 3)
+        nid_to_idx = {nid: i for i, nid in enumerate(nid_arr)}
+
+        # --- domain_id for requested mode ---
+        domains = f["EPILYSIS/RESULT/DOMAINS"][:]
+        candidates = [int(d["ID"]) for d in domains if int(d["MODE"]) == mode]
+        if not candidates:
+            raise ValueError(f"Mode {mode} not found in EPILYSIS/RESULT/DOMAINS")
+        target_domain = candidates[0]
+
+        # --- index tables: DOMAIN_ID -> (POSITION, LENGTH) ---
+        def _get_slice(index_ds, domain_id):
+            for row in index_ds:
+                if int(row["DOMAIN_ID"]) == domain_id:
+                    return int(row["POSITION"]), int(row["LENGTH"])
+            raise ValueError(f"DOMAIN_ID {domain_id} not found in index")
+
+        idx_q4  = f["INDEX/EPILYSIS/RESULT/ELEMENTAL/STRESS/QUAD4"][:]
+        idx_t3  = f["INDEX/EPILYSIS/RESULT/ELEMENTAL/STRESS/TRIA3"][:]
+        pos_q4, len_q4 = _get_slice(idx_q4, target_domain)
+        pos_t3, len_t3 = _get_slice(idx_t3, target_domain)
+
+        stress_q4 = f["EPILYSIS/RESULT/ELEMENTAL/STRESS/QUAD4"][pos_q4 : pos_q4 + len_q4]
+        stress_t3 = f["EPILYSIS/RESULT/ELEMENTAL/STRESS/TRIA3"][pos_t3 : pos_t3 + len_t3]
+
+        # --- element connectivity (DOMAIN_ID=1 for input) ---
+        cquad4 = f["EPILYSIS/INPUT/ELEMENT/CQUAD4"][:]
+        ctria3 = f["EPILYSIS/INPUT/ELEMENT/CTRIA3"][:]
+
+    # --- build centroid lookup from connectivity ---
+    def _centroids(elems, n_corners):
+        """elems: structured array with EID, PID, G fields."""
+        eid  = elems["EID"].astype(int)
+        pid  = elems["PID"].astype(int)
+        g    = elems["G"]                          # (nElem, n_corners) int
+        cent = np.zeros((len(eid), 3), dtype=float)
+        for i in range(len(eid)):
+            coords = np.array([xyz_arr[nid_to_idx[nid]] for nid in g[i] if nid in nid_to_idx])
+            if len(coords):
+                cent[i] = coords.mean(axis=0)
+        return eid, pid, cent
+
+    q4_eid, q4_pid, q4_cent = _centroids(cquad4, 4)
+    t3_eid, t3_pid, t3_cent = _centroids(ctria3, 3)
+    q4_lookup = {eid: (pid, cent) for eid, pid, cent in zip(q4_eid, q4_pid, q4_cent)}
+    t3_lookup = {eid: (pid, cent) for eid, pid, cent in zip(t3_eid, t3_pid, t3_cent)}
+
+    # --- assemble result arrays ---
+    all_eid, all_pid, all_cent, all_type = [], [], [], []
+    all_x1, all_y1, all_xy1 = [], [], []
+    all_x2, all_y2, all_xy2 = [], [], []
+
+    for s in stress_q4:
+        eid = int(s["EID"])
+        pid, cent = q4_lookup.get(eid, (0, np.zeros(3)))
+        all_eid.append(eid); all_pid.append(pid); all_cent.append(cent)
+        all_type.append("QUAD4")
+        all_x1.append(float(s["X1"]));  all_y1.append(float(s["Y1"]));  all_xy1.append(float(s["XY1"]))
+        all_x2.append(float(s["X2"]));  all_y2.append(float(s["Y2"]));  all_xy2.append(float(s["XY2"]))
+
+    for s in stress_t3:
+        eid = int(s["EID"])
+        pid, cent = t3_lookup.get(eid, (0, np.zeros(3)))
+        all_eid.append(eid); all_pid.append(pid); all_cent.append(cent)
+        all_type.append("TRIA3")
+        all_x1.append(float(s["X1"]));  all_y1.append(float(s["Y1"]));  all_xy1.append(float(s["TXY1"]))
+        all_x2.append(float(s["X2"]));  all_y2.append(float(s["Y2"]));  all_xy2.append(float(s["TXY2"]))
+
+    eid_arr   = np.array(all_eid,  dtype=int)
+    pid_arr   = np.array(all_pid,  dtype=int)
+    cent_arr  = np.array(all_cent, dtype=float)
+    type_arr  = np.array(all_type, dtype=object)
+    xy1_arr   = np.array(all_xy1,  dtype=float)
+    xy2_arr   = np.array(all_xy2,  dtype=float)
+
+    return dict(
+        eid        = eid_arr,
+        centroid   = cent_arr,
+        pid        = pid_arr,
+        elem_type  = type_arr,
+        sigma_x1   = np.array(all_x1,  dtype=float),
+        sigma_y1   = np.array(all_y1,  dtype=float),
+        tau_xy1    = xy1_arr,
+        sigma_x2   = np.array(all_x2,  dtype=float),
+        sigma_y2   = np.array(all_y2,  dtype=float),
+        tau_xy2    = xy2_arr,
+        tau_xy_avg = 0.5 * (np.abs(xy1_arr) + np.abs(xy2_arr)),
+    )
+
+
 def read_hdf5_conm2_node_ids(hdf5_path: Path) -> np.ndarray:
     """
     Extract GRID IDs referenced by CONM2 elements from an Epilysis H5 file.
