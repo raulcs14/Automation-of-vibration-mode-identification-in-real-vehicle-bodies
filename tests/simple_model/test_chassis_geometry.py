@@ -12,11 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib.pyplot as plt
-from simple_model.geometry.chassis import (
-    build_chassis_geometry,
-    plot_chassis,
-    plot_chassis_numbered,
-)
+from simple_model.geometry.chassis import build_chassis_geometry
+from common.visualization.mesh import plot_chassis, plot_chassis_numbered
 
 
 def main():

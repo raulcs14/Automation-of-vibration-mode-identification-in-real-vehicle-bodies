@@ -15,8 +15,9 @@ def average_zones(modes_t: np.ndarray, subdomains: Dict[str, List[int]],
 
     Args:
         modes_t: Translational mode matrix (3·n_nodes, nModes), layout
-                 [Ux_0..Ux_N | Uy_0..Uy_N | Uz_0..Uz_N] — as produced by
-                 extracting t_idx = sort([0::6, 1::6, 2::6]) from the full vector.
+                 [Ux_0..Ux_N | Uy_0..Uy_N | Uz_0..Uz_N] — block layout, as
+                 produced by translational_dof_indices(), i.e.
+                 np.concatenate([arange(0,gdof,6), arange(1,gdof,6), arange(2,gdof,6)]).
         subdomains: zone name → list of node indices (0-based)
         n_nodes: total number of nodes in the model
 

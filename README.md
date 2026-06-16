@@ -104,19 +104,29 @@ Identifies torsional modes without reference shapes, using four multiplicative s
 |---|---|
 | **linearity** | The θx(X) rotation profile is linear with significant amplitude |
 | **centering** | Rotation centre x₀ is near the geometric centre of the vehicle |
-| **antisym** | Left (Y > 0) and right (Y < 0) sides move in opposite directions |
+| **antisym** | Mean of the two torsion fingerprints (score_lr and score_tb) |
 | **uniformity** | Mode energy is globally distributed (suppresses local modes) |
 
 **Combined score** = linearity × centering × antisym × uniformity ∈ [0, 1]
 
-Mode classification from signed antisymmetry scores:
+A rigid rotation about X leaves two independent antisymmetric fingerprints
+(U_z = +θx·Y, U_y = −θx·Z), measured by:
+
+| Score | Definition | +1 means |
+|---|---|---|
+| **score_lr** | −corr(Uz_left, Uz_right) | torsion (lateral zones) / −1 = vertical bending |
+| **score_tb** | −corr(Uy_top, Uy_bottom) | torsion (upper/lower zones) / −1 = rigid roll |
+| **score_ly** | −corr(Uy_left, Uy_right) | lateral antisymmetry |
+| **score_xvar** | variation of per-slice mean U_y along X | distinguishes roll (≈0) from lateral bending (large) |
+
+Mode classification:
 
 | Condition | Type |
 |---|---|
-| score_Uz > 0.5 | TORSION (opposite vertical motion) |
-| score_Uy > 0.5 | ROLLING (opposite lateral motion) |
-| score_Uz < −0.5 | BENDING-V (in-phase vertical motion) |
-| score_Uy < −0.5 | BENDING-L (in-phase lateral motion) |
+| score_lr > 0.5 **and** score_tb > 0.5 | TORSION (full rigid rotation about X) |
+| score_lr < −0.5 | BENDING-V (in-phase vertical motion) |
+| score_tb / score_ly < −0.5, score_xvar small | ROLLING (rigid lateral roll) |
+| score_tb / score_ly < −0.5, score_xvar large | BENDING-L (lateral bending) |
 | otherwise | LOCAL / MIXED |
 
 ---

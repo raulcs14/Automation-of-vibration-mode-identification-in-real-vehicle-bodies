@@ -13,7 +13,7 @@ Run:
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
+from common.visualization.mac_plot import plot_mac_bar as _plot_mac_bar
 from common.utils        import translational_dof_indices as _translational_indices
 from common.interaction  import ask as _ask, ask_multi as _ask_multi, ask_int as _ask_int, ask_yes as _ask_yes
 from common.mac_core     import best_mac_per_mode as _best_mac_per_mode, select_top_modes as _select_top_modes
@@ -182,56 +182,6 @@ def _print_detail_table(
 
 
 # ---------------------------------------------------------------------------
-# Plot — bar chart of best MAC per mode
-# ---------------------------------------------------------------------------
-
-def _plot(mac_matrices: dict, idx: np.ndarray, freq: np.ndarray,
-          short_names: list[str], title: str, mode_offset: int = 0) -> None:
-    labels  = list(mac_matrices.keys())
-    n_modes = len(idx)
-    n_vars  = len(labels)
-    x       = np.arange(n_modes)
-    bar_w   = 0.8 / n_vars
-    colors  = cm.tab20(np.linspace(0, 1, n_vars))
-
-    fig, ax = plt.subplots(figsize=(max(14, n_modes * 1.0), 6))
-    for k, (label, color) in enumerate(zip(labels, colors)):
-        mac_block = mac_matrices[label][idx]            # (n_modes, nRefs)
-        best_j    = mac_block.argmax(axis=1)            # winning ref per mode
-        vals      = mac_block.max(axis=1)
-        offset    = (k - n_vars / 2 + 0.5) * bar_w
-        bars      = ax.bar(x + offset, vals, width=bar_w, label=label,
-                           color=color, alpha=0.85)
-        for bar, v, j in zip(bars, vals, best_j):
-            if v > 0.15:
-                sname = short_names[j] if j < len(short_names) else f"Ref{j+1}"
-                cx = bar.get_x() + bar.get_width() / 2
-                # label inside bar, vertically centered
-                ax.text(cx, v / 2,
-                        sname, ha="center", va="center",
-                        fontsize=6, rotation=90,
-                        color="white", fontweight="bold")
-                # MAC value just above bar
-                ax.text(cx, v + 0.01,
-                        f"{v:.2f}", ha="center", va="bottom",
-                        fontsize=6)
-
-    global_nums = mode_offset + idx + 1
-    xlabels = [f"Mode {global_nums[i]}\n({freq[idx[i]]:.1f} Hz)"
-               for i in range(n_modes)]
-    ax.set_xticks(x)
-    ax.set_xticklabels(xlabels, fontsize=7)
-    ax.set_ylabel("Best MAC value")
-    ax.set_title(title)
-    ax.set_ylim(0, 1.12)
-    ax.axhline(0.8, color="k", linewidth=0.8, linestyle="--", alpha=0.4)
-    ax.axhline(0.6, color="k", linewidth=0.6, linestyle=":",  alpha=0.3)
-    ax.legend(fontsize=7, ncol=2, loc="upper right")
-    ax.grid(axis="y", alpha=0.3)
-    fig.tight_layout()
-
-
-# ---------------------------------------------------------------------------
 # Model runners
 # ---------------------------------------------------------------------------
 
@@ -278,7 +228,7 @@ def _run_simple(cfg: dict) -> None:
     _print_identification_table(mac_matrices, idx, freq, short_names, title)
 
     if cfg["show_plot"]:
-        _plot(mac_matrices, idx, freq, short_names, title)
+        _plot_mac_bar(mac_matrices, idx, freq, short_names, title)
         plt.show()
 
 
@@ -345,7 +295,7 @@ def _run_ansa(cfg: dict) -> None:
     )
 
     if cfg["show_plot"]:
-        _plot(mac_matrices, idx, freq, SHORT_NAMES, title, mode_offset=N_RIGID_BODY_MODES)
+        _plot_mac_bar(mac_matrices, idx, freq, SHORT_NAMES, title, mode_offset=N_RIGID_BODY_MODES)
         plt.show()
 
 
@@ -455,17 +405,22 @@ def _run_torsion_id(model: str, variant: str) -> None:
 
     Supports:
       - ANSA BIW / TB  : loaded from H5 modal file (coords in mm)
-      - Simple model   : loaded from run_modal_analysis() (coords in m, converted to mm)
+      - Simple model   : loaded from run_modal_analysis(). The beam model is
+                         dimensionless (x in [-1, 5.5]); coords are scaled x1000
+                         only so the fixed mm thresholds (min_radius_sq=100,
+                         y_threshold=50) stay in range — not a physical m->mm conversion.
     """
     from pathlib import Path
-    from common.torsion_analysis import scan_torsion_scores_v2, theta_x_profile
-    import matplotlib.patches as mpatches
+    from common.torsion_analysis import scan_torsion_scores_v2
+    from common.visualization.torsion_plots import (
+        plot_cross_sections, plot_mode_map, plot_theta_profiles,
+    )
 
     if model == "simple":
         from simple_model.analysis.modal_analysis import run_modal_analysis
         print("\nLoading simple model modes...")
         dyn      = run_modal_analysis()
-        # node_coordinates in metres → convert to mm for consistency with metric thresholds
+        # dimensionless beam coords scaled x1000 so fixed mm thresholds stay in range
         node_xyz  = dyn["node_coordinates"] * 1000.0
         modes     = dyn["modes"]
         freq      = dyn["freq"]
@@ -488,8 +443,6 @@ def _run_torsion_id(model: str, variant: str) -> None:
         freq        = data["freq"]
         model_label = f"ANSA {variant}"
 
-    nNodes = len(node_xyz)
-
     # --- Configuration ---
     print("\n" + "─"*52)
     n_slices  = _ask_int("Number of longitudinal slices", default=30)
@@ -505,141 +458,44 @@ def _run_torsion_id(model: str, variant: str) -> None:
 
     # --- Classification ---
     THR = 0.5
-    COLORS = {
-        "TORSION":    "firebrick",
-        "ROLLING":    "darkorange",
-        "BENDING-V":  "steelblue",
-        "BENDING-L":  "seagreen",
-        "LOCAL/MIXTO":"gray",
-    }
-
-    def _classify(suz: float, suy: float) -> str:
-        if suz >= suy and suz > THR:  return "TORSION"
-        if suy > suz  and suy > THR:  return "ROLLING"
-        if suz < -THR:                return "BENDING-V"
-        if suy < -THR:                return "BENDING-L"
-        return "LOCAL/MIXTO"
+    from common.visualization.torsion_plots import _classify_row
 
     # --- Console table ---
     print()
-    print(f"  {'rank':>4}  {'mode':>4}  {'freq':>9}  {'combined':>8}  "
-          f"{'lin':>5}  {'cen':>5}  {'ant':>5}  {'unif':>5}  {'x0(mm)':>7}  type")
-    print("  " + "-" * 88)
-    for rank, row in enumerate(results, 1):
-        suz = float(row["score_Uz"]); suy = float(row["score_Uy"])
+    print(f"  {'rank':>4}  {'mode':>4}  {'freq':>9}  {'combined':>8}  {'rel':>5}  "
+          f"{'lin':>5}  {'cen':>5}  {'ant':>5}  {'unif':>5}  {'peak':>5}  {'x0(mm)':>7}  type")
+    print("  " + "-" * 103)
+    torsion_only = [r for r in results if _classify_row(r, THR) == "TORSION"]
+    # relative term: 1.0 for the strongest torsion mode (results sorted by combined)
+    comb_max = max((float(r["combined"]) for r in torsion_only), default=1.0) or 1.0
+    for rank, row in enumerate(torsion_only, 1):
         x0  = float(row["x0"])
         x0s = f"{x0:7.0f}" if not np.isnan(x0) else "    nan"
-        mtype = _classify(suz, suy)
+        mtype = _classify_row(row, THR)
+        rel = float(row["combined"]) / comb_max
         print(f"  {rank:4d}  {int(row['mode_idx']):4d}  {float(row['freq_hz']):9.3f}"
-              f"  {float(row['combined']):8.4f}"
+              f"  {float(row['combined']):8.4f}  {rel*100:4.0f}%"
               f"  {float(row['linearity']):5.3f}  {float(row['centering']):5.3f}"
               f"  {float(row['antisym']):5.3f}  {float(row['uniformity']):5.3f}"
-              f"  {x0s}  {mtype}")
+              f"  {float(row['peak']):5.3f}  {x0s}  {mtype}")
 
     if not show_plot:
         return
 
-    # --- Figure 1: score_Uz vs score_Uy map ---
-    fig1, ax1 = plt.subplots(figsize=(9, 8))
-    ax1.fill_between([-1.1, 1.1], [THR, THR], [1.1, 1.1], alpha=0.04, color="darkorange")
-    ax1.axhspan(THR, 1.1, xmin=(THR + 1.1) / 2.2, alpha=0.04, color="firebrick")
+    # --- Figure 0: 3-D cross-section geometry ---
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    fig0 = plt.figure(figsize=(14, 8))
+    ax0  = fig0.add_subplot(111, projection="3d")
+    plot_cross_sections(node_xyz, n_slices=n_slices, ax=ax0)
+    ax0.set_box_aspect(None)
+    fig0.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    for row in results:
-        suz  = float(row["score_Uz"]); suy = float(row["score_Uy"])
-        comb = float(row["combined"])
-        mtype = _classify(suz, suy)
-        ax1.scatter(suz, suy, color=COLORS[mtype], s=12 + 300 * comb,
-                    zorder=3, alpha=0.75, edgecolors="white", linewidths=0.3)
-        ax1.annotate(str(int(row["mode_idx"])),
-                     xy=(suz, suy), xytext=(3, 2), textcoords="offset points",
-                     fontsize=6, color=COLORS[mtype])
-
-    for v in [-THR, 0, THR]:
-        ax1.axhline(v, color="gray", lw=0.6, ls="--" if v == 0 else ":")
-        ax1.axvline(v, color="gray", lw=0.6, ls="--" if v == 0 else ":")
-
-    kw = dict(fontsize=7, alpha=0.5, ha="center")
-    ax1.text( 0.85,  0.0,  "TORSION",   color="firebrick",  **kw)
-    ax1.text( 0.0,   0.85, "ROLLING",   color="darkorange", **kw)
-    ax1.text(-0.85,  0.0,  "BENDING-V", color="steelblue",  **kw)
-    ax1.text( 0.0,  -0.85, "BENDING-L", color="seagreen",   **kw)
-    ax1.text(-0.85, -0.85, "LOCAL",     color="gray",       **kw)
-
-    patches = [mpatches.Patch(color=c, label=t) for t, c in COLORS.items()]
-    for s, lbl in [(12, "combined~0"), (62, "combined=0.15"), (162, "combined=0.5")]:
-        ax1.scatter([], [], color="k", s=s, alpha=0.6, label=lbl)
-    ax1.legend(handles=patches + ax1.get_legend_handles_labels()[0][-3:],
-               loc="upper left", fontsize=7, ncol=2)
-    ax1.set_xlabel("score_Uz  (+1 = torsion,  -1 = vertical bending)", fontsize=9)
-    ax1.set_ylabel("score_Uy  (+1 = rolling,  -1 = lateral bending)", fontsize=9)
-    ax1.set_title(f"Mode classification [{model_label}]  —  size = combined score\n"
-                  f"combined = linearity x centering x antisym x uniformity  (threshold={THR})")
-    ax1.set_xlim(-1.1, 1.1); ax1.set_ylim(-1.1, 1.1)
-    ax1.set_aspect("equal")
-    fig1.tight_layout()
+    # --- Figure 1: score_lr vs score_tb classification map ---
+    plot_mode_map(results, model_label=model_label, thr=THR)
 
     # --- Figure 2: theta_x profiles for top torsional modes ---
-    torsion_rows = [r for r in results
-                    if _classify(float(r["score_Uz"]), float(r["score_Uy"]))
-                    in {"TORSION", "ROLLING"}][:top_modes]
-
-    if torsion_rows:
-        Ux_idx = np.arange(0, 6 * nNodes, 6)
-        Uy_idx = np.arange(1, 6 * nNodes, 6)
-        Uz_idx = np.arange(2, 6 * nNodes, 6)
-        X_min  = float(node_xyz[:, 0].min())
-        X_max  = float(node_xyz[:, 0].max())
-
-        ncols = min(3, len(torsion_rows))
-        nrows = int(np.ceil(len(torsion_rows) / ncols))
-        fig2, axes2 = plt.subplots(nrows, ncols,
-                                   figsize=(5 * ncols, 4 * nrows), squeeze=False)
-        axes2 = axes2.flatten()
-
-        for i, row in enumerate(torsion_rows):
-            mi   = int(row["mode_idx"]) - 1
-            fhz  = float(row["freq_hz"])
-            comb = float(row["combined"])
-            lin  = float(row["linearity"])
-            cen  = float(row["centering"])
-            ant  = float(row["antisym"])
-            unif = float(row["uniformity"])
-            x0   = float(row["x0"])
-            mtype = _classify(float(row["score_Uz"]), float(row["score_Uy"]))
-
-            uy = modes[Uy_idx, mi]; uz = modes[Uz_idx, mi]
-            x_c, th = theta_x_profile(node_xyz, uy, uz, n_slices=n_slices)
-
-            ax = axes2[i]
-            ax.plot(x_c, th, "o-", color=COLORS.get(mtype, "steelblue"),
-                    lw=1.5, ms=4, label="theta_x")
-            if len(x_c) >= 4:
-                coeffs = np.polyfit(x_c, th, 1)
-                x_fit  = np.array([x_c.min(), x_c.max()])
-                ax.plot(x_fit, np.polyval(coeffs, x_fit), "--", color="tomato",
-                        lw=1.3, label=f"lineal (lin={lin:.2f})")
-                if X_min <= x0 <= X_max:
-                    ax.axvline(x0, color="tomato", lw=0.9, ls=":",
-                               label=f"x0={x0:.0f} mm")
-            ax.axhline(0, color="k", lw=0.7, ls=":")
-            ax.set_xlabel("X (mm)", fontsize=8); ax.set_ylabel("theta_x (rad/u)", fontsize=8)
-            ax.set_title(
-                f"Mode {int(row['mode_idx'])}  {fhz:.2f} Hz  [{mtype}]\n"
-                f"comb={comb:.3f}  lin={lin:.2f}  cen={cen:.2f}\n"
-                f"ant={ant:.2f}  unif={unif:.3f}",
-                fontsize=7.5
-            )
-            ax.legend(fontsize=6); ax.grid(True, alpha=0.3); ax.tick_params(labelsize=7)
-
-        for j in range(len(torsion_rows), len(axes2)):
-            axes2[j].set_visible(False)
-
-        fig2.suptitle(
-            f"Top {len(torsion_rows)} TORSION/ROLLING modes [{model_label}]"
-            f"  —  combined = lin x cen x ant x unif  ({n_slices} slices)",
-            fontsize=10
-        )
-        fig2.tight_layout()
+    plot_theta_profiles(results, node_xyz, modes, n_slices,
+                        model_label=model_label, top_modes=top_modes, thr=THR)
 
     plt.show()
 

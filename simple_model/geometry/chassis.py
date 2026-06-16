@@ -4,7 +4,6 @@ Equivalent to buildChassisGeometry.m
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal
 
@@ -173,62 +172,3 @@ def _check_all_nodes_assigned(n_nodes: int, subdomains: Dict[str, List[int]]) ->
         print(f"WARNING - Nodes with no subdomain: {free.tolist()}")
 
 
-# ------------------------------------------------------------------
-# Visualisation helpers
-# ------------------------------------------------------------------
-
-def plot_chassis(geometry: ChassisGeometry, view: tuple = (135, 20)) -> plt.Figure:
-    """Plain mesh plot, no node labels."""
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-    _draw_mesh_lines(ax, geometry.node_coordinates, geometry.element_nodes)
-    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
-    _set_equal_axes(ax, geometry.node_coordinates)
-    ax.grid(True)
-    ax.view_init(*view)
-    return fig
-
-
-def plot_chassis_numbered(geometry: ChassisGeometry, view: tuple = (200, 20)) -> plt.Figure:
-    """Mesh plot with 1-based node numbers (matching MATLAB output)."""
-    nc = geometry.node_coordinates
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-    _draw_mesh_lines(ax, nc, geometry.element_nodes, linestyle="k--", marker=".")
-    for i, (x, y, z) in enumerate(nc):
-        ax.text(x, y, z, str(i + 1),          # 1-based label
-                fontsize=9, color="red", fontweight="bold")
-    ax.set_title("Node numbering")
-    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
-    _set_equal_axes(ax, nc)
-    ax.grid(True)
-    ax.view_init(*view)
-    return fig
-
-
-def _draw_mesh_lines(ax, node_coordinates, element_nodes,
-                     linestyle="k-", marker=None) -> None:
-    nc = node_coordinates
-    fmt = linestyle + (marker or "")
-    for e in element_nodes:
-        n1, n2 = e
-        ax.plot([nc[n1, 0], nc[n2, 0]],
-                [nc[n1, 1], nc[n2, 1]],
-                [nc[n1, 2], nc[n2, 2]],
-                fmt, linewidth=1.2)
-
-
-def _set_equal_axes(ax, node_coordinates: np.ndarray) -> None:
-    """Force equal scale on all three axes, Z=0 at bottom."""
-    mins = node_coordinates.min(axis=0)
-    maxs = node_coordinates.max(axis=0)
-    center = (mins + maxs) / 2
-    half = (maxs - mins).max() / 2
-    ax.set_xlim(center[0] - half, center[0] + half)
-    ax.set_ylim(center[1] - half, center[1] + half)
-    zlo, zhi = center[2] - half, center[2] + half
-    ax.set_zlim(zlo, zhi)
-    # Ensure Z increases upward (reset any prior inversion before applying ours)
-    if ax.zaxis_inverted():
-        ax.invert_zaxis()   # un-invert if already flipped
-    # matplotlib 3D default has Z increasing upward — nothing more needed

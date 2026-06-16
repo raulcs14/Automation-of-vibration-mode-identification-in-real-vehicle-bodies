@@ -209,8 +209,8 @@ ant  = res["antisym"]
 comb = res["combined"]
 unif = res["uniformity"]
 x0   = res["x0"]
-suz  = res["score_Uz"]
-suy  = res["score_Uy"]
+slr  = res["score_lr"]
+stb  = res["score_tb"]
 
 fig4, ax4 = plt.subplots(figsize=(9, 4))
 ax4.plot(x_c, th, "o-", color="steelblue", lw=2, ms=6, label="theta_x per slice")
@@ -233,7 +233,7 @@ ax4.set_title(
     f"Mode {mode_num}  —  {freq_sel:.2f} Hz\n"
     f"linearity={lin:.2f}   centering={cen:.2f}   antisym={ant:.2f}   uniformity={unif:.3f}\n"
     f"combined={comb:.3f}   (= lin x cen x ant x unif)\n"
-    f"score_Uz={suz:+.3f}   score_Uy={suy:+.3f}"
+    f"score_lr={slr:+.3f}   score_tb={stb:+.3f}"
 )
 ax4.legend(fontsize=8)
 ax4.grid(True, alpha=0.3)
