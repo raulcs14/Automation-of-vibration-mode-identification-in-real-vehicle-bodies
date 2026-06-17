@@ -7,6 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Dict, List
 
+from common.visualization.mesh import _draw_mesh_lines, _set_equal_axes
+
 
 def plot_subdomain_vectors(ax: plt.Axes, node_coordinates: np.ndarray,
                             element_nodes: np.ndarray,
@@ -28,8 +30,6 @@ def plot_subdomain_vectors(ax: plt.Axes, node_coordinates: np.ndarray,
         mode_index: 0-based column to extract when vectors is 2D
         title: Plot title
     """
-    from simple_model.geometry.chassis import _draw_mesh_lines, _set_equal_axes
-
     zone_names = list(subdomains.keys())
     n_zones = len(zone_names)
 

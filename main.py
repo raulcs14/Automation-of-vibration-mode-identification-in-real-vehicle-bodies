@@ -401,7 +401,8 @@ def _interactive_config_mac(model: str, variant: str = "BIW") -> dict:
 def _run_torsion_id(model: str, variant: str) -> None:
     """
     Torsion mode identification flow based on geometric criteria:
-        combined = linearity x centering x antisym x uniformity
+        combined = antisym x gate(linearity) x gate(centering) x local_veto
+    where antisym is the lever-arm-aware rigid-rotation fit (rigid_uz).
 
     Supports:
       - ANSA BIW / TB  : loaded from H5 modal file (coords in mm)
@@ -462,9 +463,14 @@ def _run_torsion_id(model: str, variant: str) -> None:
 
     # --- Console table ---
     print()
+    # 'ant' is the rigid-rotation fit rigid_uz (drives the ranking); 'rig_uy'
+    # is the stricter full (Uz,Uy) rigid fit, shown for diagnostics.  uniformity
+    # is no longer displayed: it does not enter the ranking, and the local-mode
+    # protection it used to provide is now handled by the 'peak' veto (which is
+    # stricter for a dominant peak on a low background — see peak_concentration).
     print(f"  {'rank':>4}  {'mode':>4}  {'freq':>9}  {'combined':>8}  {'rel':>5}  "
-          f"{'lin':>5}  {'cen':>5}  {'ant':>5}  {'unif':>5}  {'peak':>5}  {'x0(mm)':>7}  type")
-    print("  " + "-" * 103)
+          f"{'lin':>5}  {'cen':>5}  {'ant':>5}  {'rig_uy':>6}  {'peak':>5}  {'x0(mm)':>7}  type")
+    print("  " + "-" * 104)
     torsion_only = [r for r in results if _classify_row(r, THR) == "TORSION"]
     # relative term: 1.0 for the strongest torsion mode (results sorted by combined)
     comb_max = max((float(r["combined"]) for r in torsion_only), default=1.0) or 1.0
@@ -476,7 +482,7 @@ def _run_torsion_id(model: str, variant: str) -> None:
         print(f"  {rank:4d}  {int(row['mode_idx']):4d}  {float(row['freq_hz']):9.3f}"
               f"  {float(row['combined']):8.4f}  {rel*100:4.0f}%"
               f"  {float(row['linearity']):5.3f}  {float(row['centering']):5.3f}"
-              f"  {float(row['antisym']):5.3f}  {float(row['uniformity']):5.3f}"
+              f"  {float(row['antisym']):5.3f}  {float(row['rigid_uzuy']):6.3f}"
               f"  {float(row['peak']):5.3f}  {x0s}  {mtype}")
 
     if not show_plot:

@@ -3,12 +3,12 @@ Diagnostic script: inspect what average_zones does to modes and reference
 in the BIW model, and why MAC values may be spurious.
 
 Run from anywhere:
-    py -3 tests/SEAT/debug_subdomain_mac_biw.py
+    py -3 tests/SEAT/mac/biw/debug_subdomain_mac_biw.py
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
 
 import numpy as np
 import matplotlib.pyplot as plt

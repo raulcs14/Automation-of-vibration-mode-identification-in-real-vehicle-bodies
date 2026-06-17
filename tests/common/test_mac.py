@@ -14,7 +14,15 @@ Interactive flow
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,7 +32,7 @@ from common.subdomain              import average_zones, reduce_mk_by_subdomains
 from common.rigid_body             import remove_rigid_body_component
 from common.visualization.mac_plot import plot_mac_matrix
 from common.utils                  import translational_dof_indices, densify
-from tests.common.test_helpers     import ask_yn, ask_weighting
+from _helpers                 import ask_yn, ask_weighting
 
 F0_ENERGY = 40.0
 

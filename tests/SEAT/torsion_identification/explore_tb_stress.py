@@ -205,9 +205,9 @@ x_c  = res["x_centers"]
 th   = res["theta_means"]
 lin  = res["linearity"]
 cen  = res["centering"]
-ant  = res["antisym"]
+ant  = res["antisym"]       # rigid_uz, drives the ranking
 comb = res["combined"]
-unif = res["uniformity"]
+riguy = res["rigid_uzuy"]
 x0   = res["x0"]
 slr  = res["score_lr"]
 stb  = res["score_tb"]
@@ -231,8 +231,8 @@ ax4.set_xlabel("X (mm)")
 ax4.set_ylabel("Mean theta_x per slice (rad/unit)")
 ax4.set_title(
     f"Mode {mode_num}  —  {freq_sel:.2f} Hz\n"
-    f"linearity={lin:.2f}   centering={cen:.2f}   antisym={ant:.2f}   uniformity={unif:.3f}\n"
-    f"combined={comb:.3f}   (= lin x cen x ant x unif)\n"
+    f"linearity={lin:.2f}   centering={cen:.2f}   antisym={ant:.2f}   rigid_uzuy={riguy:.3f}\n"
+    f"combined={comb:.3f}   (= antisym x gate(lin) x gate(cen) x veto)\n"
     f"score_lr={slr:+.3f}   score_tb={stb:+.3f}"
 )
 ax4.legend(fontsize=8)

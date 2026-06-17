@@ -16,9 +16,22 @@ Run from anywhere:
 """
 
 import sys
+# Windows console defaults to cp1252; force UTF-8 so unicode prints
+# (arrows, pi, degree signs) don't crash when run via the IDE Run button.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # tests/
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -31,7 +44,7 @@ from common.dof_reduction       import DofSpace
 from common.subdomain           import average_zones, reduce_mk_by_subdomains
 from common.mac_core            import compute_mac
 from common.utils               import translational_dof_indices
-from test_helpers               import ask_weighting
+from _helpers               import ask_weighting
 
 F0_ENERGY  = 40.0
 N_TOP_MODES = 20

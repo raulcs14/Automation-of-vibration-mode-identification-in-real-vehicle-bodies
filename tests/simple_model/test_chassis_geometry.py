@@ -6,10 +6,23 @@ Run from anywhere:
 """
 
 import sys
+# Windows console defaults to cp1252; force UTF-8 so unicode prints
+# (arrows, pi, degree signs) don't crash when run via the IDE Run button.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
 from pathlib import Path
 
 # Ensure project root is on sys.path regardless of working directory
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Make the project root importable so this file runs under pytest AND when
+# executed directly (IDE Run button).  Walk up to the repo root (the dir that
+# contains the `common` package) instead of hard-coding a parents[N] depth.
+_p = Path(__file__).resolve()
+for _root in _p.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
 
 import matplotlib.pyplot as plt
 from simple_model.geometry.chassis import build_chassis_geometry

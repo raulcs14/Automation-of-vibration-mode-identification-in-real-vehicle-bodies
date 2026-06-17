@@ -10,7 +10,15 @@ then shows one figure per selected mode with the averaged subdomain vectors.
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,7 +27,7 @@ from common.subdomain import average_zones
 from common.visualization.vectors import plot_subdomain_vectors
 from simple_model.geometry.chassis import build_chassis_geometry
 from common.utils import translational_dof_indices
-from test_helpers import ask_mode
+from _helpers import ask_mode
 
 SCALE_FACTOR = 5.0
 

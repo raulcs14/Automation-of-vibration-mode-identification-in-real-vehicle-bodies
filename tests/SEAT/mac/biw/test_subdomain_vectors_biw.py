@@ -13,8 +13,15 @@ Run from anywhere:
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # tests/
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,7 +33,7 @@ from common.subdomain           import average_zones
 from common.mac_core            import compute_mac
 from common.visualization.mac_plot import plot_mac_matrix
 from common.utils               import translational_dof_indices
-from test_helpers               import ask_mode
+from _helpers               import ask_mode
 
 SCALE_FACTOR = 500.0   # mm — visual scale for displacement arrows
 N_TOP_MODES  = 20      # modes shown in MAC plot and ranking

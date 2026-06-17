@@ -3,10 +3,11 @@ Sweep of torsion_score_v2 for all modes of the TB model.
 
 Run:  py tests/SEAT/torsion_identification/explore_tb_torsion_scores.py
 
-combined = linearity * centering * antisym * uniformity
+combined = antisym * gate(linearity) * gate(centering) * local_veto
   linearity : theta_x(X) profile is linear with real amplitude (not flat)
   centering : rotation centre near the geometric centre of the vehicle
-  antisym   : mean of the two torsion fingerprints (score_lr and score_tb)
+  antisym   : lever-arm-aware rigid-rotation fit rigid_uz (R^2 of Uz vs theta*Y);
+              drives the ranking.  score_lr/score_tb remain for classification.
 
 Classification from the antisymmetry fingerprints (see common.torsion_analysis
 and common.visualization.torsion_plots.classify_scores):
@@ -64,7 +65,7 @@ THR = 0.5  # classification threshold
 # ---------------------------------------------------------------------------
 print()
 print(f"  {'rank':>4}  {'mode':>4}  {'freq':>9}  {'combined':>8}  "
-      f"{'linear':>6}  {'center':>6}  {'antisym':>7}  {'unifrm':>6}  {'x0(mm)':>7}  "
+      f"{'linear':>6}  {'center':>6}  {'antisym':>7}  {'rig_uy':>6}  {'x0(mm)':>7}  "
       f"{'sc_lr':>6}  {'sc_tb':>6}  {'xvar':>5}  type")
 print("-" * 116)
 for rank, row in enumerate(results, 1):
@@ -74,7 +75,7 @@ for rank, row in enumerate(results, 1):
     lin  = float(row["linearity"])
     cen  = float(row["centering"])
     ant  = float(row["antisym"])
-    unif = float(row["uniformity"])
+    riguy = float(row["rigid_uzuy"])
     x0   = float(row["x0"])
     slr  = float(row["score_lr"])
     stb  = float(row["score_tb"])
@@ -82,7 +83,7 @@ for rank, row in enumerate(results, 1):
     x0s  = f"{x0:7.0f}" if not np.isnan(x0) else "    nan"
     mtype = _classify_row(row, THR)
     print(f"  {rank:4d}  {m:4d}  {f:9.3f}  {c:8.4f}  {lin:6.3f}  "
-          f"{cen:6.3f}  {ant:7.3f}  {unif:6.3f}  {x0s}  {slr:+6.3f}  {stb:+6.3f}  "
+          f"{cen:6.3f}  {ant:7.3f}  {riguy:6.3f}  {x0s}  {slr:+6.3f}  {stb:+6.3f}  "
           f"{xvar:5.2f}  {mtype}")
 
 # ---------------------------------------------------------------------------
@@ -111,7 +112,6 @@ for i, row in enumerate(top):
     lin  = float(row["linearity"])
     cen  = float(row["centering"])
     ant  = float(row["antisym"])
-    unif = float(row["uniformity"])
     x0   = float(row["x0"])
     mtype = _classify_row(row, THR)
 
@@ -140,7 +140,7 @@ for i, row in enumerate(top):
     ax.set_title(
         f"Mode {int(row['mode_idx'])}  {fhz:.2f} Hz  [{mtype}]\n"
         f"comb={comb:.3f}  lin={lin:.2f}  cen={cen:.2f}\n"
-        f"ant={ant:.2f}  unif={unif:.3f}",
+        f"ant={ant:.2f}",
         fontsize=7.5
     )
     ax.legend(fontsize=6)

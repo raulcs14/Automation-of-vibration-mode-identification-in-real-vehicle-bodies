@@ -9,14 +9,23 @@ Asks interactively which case to inspect individually, then shows all 11.
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
 from simple_model.analysis.static_model import run_static_model, REF_NAMES
-from simple_model.geometry.chassis import _draw_mesh_lines, _set_equal_axes
-from common.visualization.mesh import plot_deformed as _plot_deformed
-from test_helpers import ask_case as _ask_case
+from common.visualization.mesh import (
+    _draw_mesh_lines, _set_equal_axes, plot_deformed as _plot_deformed,
+)
+from _helpers import ask_case as _ask_case
 
 
 def plot_deformed(ax, nc, en, u_raw, name, target_frac=0.08):

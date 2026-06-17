@@ -9,7 +9,14 @@ Run from anywhere:
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
+# Make the project root importable so this file runs under pytest AND when
+# executed directly (IDE Run button).  Walk up to the repo root (the dir that
+# contains the `common` package) instead of hard-coding a parents[N] depth.
+_p = Path(__file__).resolve()
+for _root in _p.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))  # repo root
 
 import numpy as np
 import matplotlib.pyplot as plt

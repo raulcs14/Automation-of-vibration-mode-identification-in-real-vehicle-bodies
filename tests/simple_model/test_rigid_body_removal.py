@@ -13,22 +13,29 @@ Flow
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
 
 from simple_model.analysis.static_model   import run_static_model, REF_NAMES
 from simple_model.analysis.modal_analysis import run_modal_analysis
-from simple_model.geometry.chassis        import (build_chassis_geometry,
-                                                   _draw_mesh_lines,
-                                                   _set_equal_axes)
+from simple_model.geometry.chassis        import build_chassis_geometry
+from common.visualization.mesh            import _draw_mesh_lines, _set_equal_axes
 from common.rigid_body                    import remove_rigid_body_component
 from common.subdomain                     import average_zones
 from common.visualization.vectors         import plot_subdomain_vectors
 from common.utils                         import translational_dof_indices
 from common.visualization.mesh import plot_deformed as _plot_deformed
-from test_helpers               import ask_case as _ask_case, ask_yn
+from _helpers               import ask_case as _ask_case, ask_yn
 
 
 def ask_case(n_cases):

@@ -308,8 +308,7 @@ def plot_theta_profiles(
         rel   = comb / comb_max
         lin   = float(row["linearity"])
         cen   = float(row["centering"])
-        ant   = float(row["antisym"])
-        unif  = float(row["uniformity"])
+        ant   = float(row["antisym"])      # rigid_uz, drives the ranking
         x0    = float(row["x0"])
         mtype = _classify_row(row, thr)
 
@@ -333,7 +332,7 @@ def plot_theta_profiles(
         ax.set_title(
             f"Mode {int(row['mode_idx'])}  {fhz:.2f} Hz  [{mtype}]\n"
             f"comb={comb:.3f}  (rel={rel*100:.0f}%)\n"
-            f"lin={lin:.2f}  cen={cen:.2f}  ant={ant:.2f}  unif={unif:.3f}",
+            f"lin={lin:.2f}  cen={cen:.2f}  ant={ant:.2f}",
             fontsize=7.5,
         )
         ax.legend(fontsize=6); ax.grid(True, alpha=0.3); ax.tick_params(labelsize=7)
@@ -343,7 +342,7 @@ def plot_theta_profiles(
 
     fig.suptitle(
         f"Top {len(torsion_rows)} TORSION/ROLLING modes [{model_label}]"
-        f"  —  combined = lin x cen x ant x unif  ({n_slices} slices)",
+        f"  —  combined = antisym x gate(lin) x gate(cen)  ({n_slices} slices)",
         fontsize=10,
     )
     fig.tight_layout()

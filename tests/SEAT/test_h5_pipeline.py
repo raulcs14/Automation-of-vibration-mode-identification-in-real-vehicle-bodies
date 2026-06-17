@@ -58,7 +58,7 @@ def section(title: str) -> None:
 # 1. H5 modal read
 # ---------------------------------------------------------------------------
 
-def test_modal_reader(variant: str) -> dict:
+def _check_modal_reader(variant: str) -> dict:
     section(f"1. H5 modal read [{variant}]")
     dyn = run_modal_analysis(variant=variant, skip_rigid=False)
 
@@ -90,7 +90,7 @@ def test_modal_reader(variant: str) -> dict:
 # 2. H5 static read
 # ---------------------------------------------------------------------------
 
-def test_static_reader(variant: str, dyn: dict) -> dict:
+def _check_static_reader(variant: str, dyn: dict) -> dict:
     section(f"2. H5 static read [{variant}]")
     stat = run_static_model(variant=variant)
 
@@ -115,7 +115,7 @@ def test_static_reader(variant: str, dyn: dict) -> dict:
 # 3. K and M matrices
 # ---------------------------------------------------------------------------
 
-def test_matrices(variant: str, dyn: dict) -> None:
+def _check_matrices(variant: str, dyn: dict) -> None:
     section(f"3. K and M matrices [{variant}]")
     K = dyn["K"]
     M = dyn["M"]
@@ -146,7 +146,7 @@ def test_matrices(variant: str, dyn: dict) -> None:
 # 4. CONM2 (TB only)
 # ---------------------------------------------------------------------------
 
-def test_conm2(dyn: dict, variant: str) -> None:
+def _check_conm2(dyn: dict, variant: str) -> None:
     section(f"4. CONM2 [{variant}]")
     if variant != "TB":
         check("BIW: conm2_node_ids is None", dyn["conm2_node_ids"] is None)
@@ -167,7 +167,7 @@ def test_conm2(dyn: dict, variant: str) -> None:
 # 5 & 6. MAC identity and mass-weighted
 # ---------------------------------------------------------------------------
 
-def test_mac(variant: str, dyn: dict, stat: dict) -> None:
+def _check_mac(variant: str, dyn: dict, stat: dict) -> None:
     section(f"5-6. MAC identity and mass-weighted [{variant}]")
 
     modes = dyn["modes"][:, N_RIGID_BODY_MODES:]   # elastic modes only
@@ -223,7 +223,7 @@ def test_mac(variant: str, dyn: dict, stat: dict) -> None:
 # 7. DofSpace — consistency after remove_nodes and translational_slice
 # ---------------------------------------------------------------------------
 
-def test_dofspace(variant: str, dyn: dict, stat: dict) -> None:
+def _check_dofspace(variant: str, dyn: dict, stat: dict) -> None:
     section(f"7. DofSpace [{variant}]")
 
     space = DofSpace(
@@ -275,12 +275,12 @@ def run_variant(variant: str) -> None:
     print(f"  VARIANT: {variant}")
     print(f"{'='*60}")
 
-    dyn  = test_modal_reader(variant)
-    stat = test_static_reader(variant, dyn)
-    test_matrices(variant, dyn)
-    test_conm2(dyn, variant)
-    test_mac(variant, dyn, stat)
-    test_dofspace(variant, dyn, stat)
+    dyn  = _check_modal_reader(variant)
+    stat = _check_static_reader(variant, dyn)
+    _check_matrices(variant, dyn)
+    _check_conm2(dyn, variant)
+    _check_mac(variant, dyn, stat)
+    _check_dofspace(variant, dyn, stat)
 
 
 def main() -> None:

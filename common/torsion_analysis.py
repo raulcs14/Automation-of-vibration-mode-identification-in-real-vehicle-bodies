@@ -36,13 +36,103 @@ Both scores are ~+1 for pure torsion.  Bending and rigid roll separate cleanly:
 
 Public API
 ----------
-  torsion_score_v2    : composite score for a single mode (linearity x centering x antisym x uniformity)
+  pca_body_frame      : geometry-derived body frame (longitudinal torsion axis,
+                        levelled to the ground, through the robust centroid)
+  rigid_rotation_fit  : lever-arm-aware goodness-of-fit of a mode to a rigid
+                        rotation about the longitudinal axis (drives the ranking)
+  torsion_score_v2    : composite score for a single mode
+                        (antisym x gate(linearity) x gate(centering) x local_veto)
   scan_torsion_scores_v2 : apply torsion_score_v2 to every mode, return structured array sorted by score
   theta_x_profile     : rotation angle per X-slice for visualisation
-  spatial_uniformity  : Shannon-entropy uniformity metric
+  spatial_uniformity  : Shannon-entropy uniformity metric (reported, not ranked)
 """
 
 import numpy as np
+
+
+def pca_body_frame(node_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Derive the vehicle's body frame from the node cloud by principal-axis
+    analysis, so the torsion axis is computed from the geometry instead of being
+    assumed to be the global X axis through the origin.
+
+    A car body is a long ellipsoid: its longest principal direction is the
+    morro-cola (longitudinal) axis about which torsion occurs.  This makes the
+    criterion orientation-free — a model meshed along Y or Z is handled without
+    any hard-coded axis.
+
+    Physical refinement: the torsion axis is the longitudinal axis of a vehicle
+    sitting on the ground, i.e. it must be PARALLEL TO THE GROUND.  The raw PCA
+    principal direction is not quite horizontal because PCA maximises node
+    scatter and is therefore biased by body SHAPE (a tall roof at the rear vs a
+    low bonnet at the front tilts it).  On the TB model the raw principal axis
+    tilts 3.3 deg from horizontal while the actual floor slopes only ~1.3 deg —
+    most of that tilt is a shape artefact, not real mounting tilt.  So we take
+    only the HEADING of the principal axis (its projection onto the horizontal
+    plane) and keep "up" as global Z.  This removes the shape bias and matches
+    the physics of torsion (twist about a level longitudinal axis) while still
+    correcting the important offset: the axis passes through the structure's
+    robust mid-height, not the origin.
+
+    Robust by design (no mesh weighting): the centre is the MEDIAN node position
+    (insensitive to locally dense mesh regions that would drag a mean centroid).
+    No tunable parameters are introduced — the frame is purely geometric.
+
+    Method
+    ------
+        centre  = median(node_xyz, axis=0)
+        lam, V  = eigh(cov(node_xyz - centre))   # principal directions
+        e_long0 = eigenvector of largest lam     # raw longitudinal (may tilt)
+        e_long  = e_long0 projected onto the horizontal plane, renormalised
+        e_vert  = global Z (up)
+        e_lat   = e_vert x e_long                # right-handed, horizontal
+
+    Axes are sign-oriented for readability (e_long points +X-ish, e_vert +Z-ish)
+    so the body frame stays close to the global frame for a conventionally
+    aligned model and the score sign conventions (Uz = +theta*Y_body) are kept.
+
+    Parameters
+    ----------
+    node_xyz : (nNodes, 3) node coordinates
+
+    Returns
+    -------
+    centre : (3,)   robust centroid the spin axis passes through
+    R      : (3, 3) rotation whose ROWS are (e_long, e_lat, e_vert).  For a node
+             p, the body-frame coordinate is R @ (p - centre); for a displacement
+             vector u (no translation), the body-frame displacement is R @ u.
+    lam    : (3,)   principal variances ordered (longitudinal, lateral, vertical)
+    """
+    centre = np.median(node_xyz, axis=0)
+    P = node_xyz - centre
+    C = np.cov(P, rowvar=False)
+    lam, V = np.linalg.eigh(C)                 # ascending lam; columns = eigvecs
+
+    order = np.argsort(lam)[::-1]              # [longest, mid, shortest]
+    lam = lam[order]
+    V = V[:, order]
+    e_long = V[:, 0]                           # raw longitudinal (largest extent)
+
+    # consistent sign: longitudinal points +X-ish before we level it
+    if e_long[0] < 0:
+        e_long = -e_long
+
+    # Level the axis: keep only its horizontal heading (zero the vertical comp),
+    # so torsion is measured about a ground-parallel longitudinal axis.  Fall
+    # back to the raw axis in the degenerate case of a (near-)vertical body.
+    e_long_h = e_long.copy()
+    e_long_h[2] = 0.0
+    norm = np.linalg.norm(e_long_h)
+    e_long = e_long_h / norm if norm > 1e-12 else e_long
+
+    # "up" is global Z; lateral completes a right-handed, horizontal frame
+    e_vert = np.array([0.0, 0.0, 1.0])
+    e_lat = np.cross(e_vert, e_long)
+    e_lat /= np.linalg.norm(e_lat)
+    e_vert = np.cross(e_long, e_lat)           # re-orthonormalise (already unit)
+
+    R = np.vstack([e_long, e_lat, e_vert])
+    return centre, R, lam
 
 
 def _lr_bin_means(
@@ -136,6 +226,115 @@ def _x_variation(X: np.ndarray, disp: np.ndarray, n_slices: int) -> float:
     if scale < 1e-30:
         return 0.0
     return float(np.std(sm) / scale)
+
+
+def rigid_rotation_fit(
+    node_xyz: np.ndarray,
+    uy: np.ndarray,
+    uz: np.ndarray,
+    n_slices: int,
+    min_radius_sq: float = 100.0,
+    min_nodes: int = 8,
+) -> tuple[float, float]:
+    """
+    Goodness-of-fit of the modal field to an IDEAL rigid rotation about X.
+
+    Motivation
+    ----------
+    The correlation-based fingerprint score_lr = -corr(Uz_left, Uz_right) only
+    tests whether the two sides are in OPPOSITE PHASE along X.  Correlation is
+    blind to two properties a real rigid rotation must satisfy:
+
+      1. Amplitude antisymmetry — Uz_left ~ -Uz_right with the SAME magnitude.
+         corr = +1 even if one side barely moves (Uz_left = -0.01 * Uz_right).
+      2. Lever-arm scaling — a rotation gives Uz = theta_x * Y, so displacement
+         must grow with |Y|.  corr ignores amplitude entirely.
+
+    This routine instead asks "how close is the field to an actual rotation?".
+    A rigid rotation by theta about X predicts, per node:
+
+        Uz = +theta * Y        Uy = -theta * Z
+
+    For each X-slice we fit the single theta that best explains both components
+    (closed-form least squares) and measure the fraction of the slice's motion
+    explained by that rotation (R^2).  The result is naturally in [0, 1], equals
+    1 ONLY for a pure rotation, and degrades physically — not via an artificial
+    exponent — when the mode couples bending, lateral motion, or a one-sided
+    amplitude.  This makes it far more discriminating than score_lr (e.g. it
+    cleanly separates a true torsion mode from high-frequency local modes whose
+    sides happen to be out of phase but do not scale with the lever arm).
+
+    Per-slice fit
+    -------------
+    theta minimises  || Uz - theta*Y ||^2 + || Uy + theta*Z ||^2, giving
+
+        theta = sum(Uz*Y - Uy*Z) / sum(Y^2 + Z^2)
+
+    Two R^2 values are accumulated per slice and averaged across slices,
+    AMPLITUDE-WEIGHTED so slices that actually move dominate (a near-still slice
+    carries no torsion information and must not dilute the score):
+
+        rigid_uz   : R^2 of Uz vs theta*Y only.  Directly comparable to score_lr
+                     but lever-arm aware; this is the lateral torsion fingerprint
+                     used to rank modes.
+        rigid_uzuy : R^2 of the full (Uz, Uy) field vs the rigid prediction.
+                     Returned for reference / diagnostics (stricter, but Uy is
+                     noisier on trimmed bodies — see score_tb discussion).
+
+    Parameters
+    ----------
+    node_xyz      : (nNodes, 3) node coordinates
+    uy, uz        : (nNodes,)   modal displacements in Y and Z
+    n_slices      : number of X-bins
+    min_radius_sq : nodes with Y^2 + Z^2 below this have no usable lever arm and
+                    are excluded (same convention as theta_x_profile)
+    min_nodes     : a slice needs at least this many valid nodes to be fitted
+
+    Returns
+    -------
+    (rigid_uz, rigid_uzuy) : both floats in [0, 1]; (0, 0) if no slice qualifies
+    """
+    X, Y, Z = node_xyz[:, 0], node_xyz[:, 1], node_xyz[:, 2]
+    valid   = (Y ** 2 + Z ** 2) > min_radius_sq
+    bins    = np.linspace(X.min(), X.max(), n_slices + 1)
+    bi      = np.digitize(X, bins)
+
+    r2_uz, r2_full, weights = [], [], []
+    for b in range(1, n_slices + 1):
+        m = (bi == b) & valid
+        if m.sum() < min_nodes:
+            continue
+        Ys, Zs, uys, uzs = Y[m], Z[m], uy[m], uz[m]
+
+        # best-fit rotation angle for this slice (closed form)
+        den = float(np.sum(Ys ** 2 + Zs ** 2))
+        if den < 1e-30:
+            continue
+        theta = float(np.sum(uzs * Ys - uys * Zs)) / den
+
+        # full (Uy, Uz) rigid-rotation R^2
+        ss_res = float(np.sum((uzs - theta * Ys) ** 2 + (uys + theta * Zs) ** 2))
+        ss_tot = float(np.sum(uzs ** 2 + uys ** 2))
+        if ss_tot < 1e-30:
+            continue
+        r2_full.append(max(0.0, 1.0 - ss_res / ss_tot))
+
+        # Uz-only (lever-arm) R^2 — the lateral fingerprint used for ranking
+        ss_res_z = float(np.sum((uzs - theta * Ys) ** 2))
+        ss_tot_z = float(np.sum(uzs ** 2))
+        r2_uz.append(max(0.0, 1.0 - ss_res_z / ss_tot_z) if ss_tot_z > 1e-30 else 0.0)
+
+        # weight this slice by how much it moves (ss_tot is a kinetic-energy proxy)
+        weights.append(ss_tot)
+
+    if not weights:
+        return 0.0, 0.0
+
+    w = np.array(weights)
+    w = w / w.sum()
+    rigid_uz   = float(np.dot(w, np.array(r2_uz)))
+    rigid_uzuy = float(np.dot(w, np.array(r2_full)))
+    return rigid_uz, rigid_uzuy
 
 
 def theta_x_profile(
@@ -242,6 +441,21 @@ def peak_concentration(
     return float(hottest.sum() / total)
 
 
+def _soft_gate(value: float, x0: float, k: float = 12.0) -> float:
+    """
+    Smooth 0->1 quality gate: sigmoid centred at x0 with slope k.
+
+    Used to turn a quality sub-score (linearity, centering) into a near-binary
+    "pass" factor that does NOT crush the dynamic range of the ranking metric.
+    A hard threshold (value >= x0) drops borderline torsion modes; the sigmoid
+    keeps them with a graded penalty, so recall stays high while the product no
+    longer compresses good modes toward zero the way a raw linear factor does.
+
+        gate(x0) = 0.5,   gate(x0 + 2/k) ~ 0.92,   gate(x0 - 2/k) ~ 0.08
+    """
+    return float(1.0 / (1.0 + np.exp(-k * (value - x0))))
+
+
 def torsion_score_v2(
     node_xyz: np.ndarray,
     ux: np.ndarray,
@@ -252,6 +466,8 @@ def torsion_score_v2(
     z_threshold: float = 50.0,
     min_radius_sq: float = 100.0,
     peak_thr: float = 0.6,
+    lin_gate: float = 0.30,
+    cen_gate: float = 0.40,
 ) -> dict:
     """
     Refined torsion score that measures two independent properties of the
@@ -281,22 +497,38 @@ def torsion_score_v2(
                  The sqrt makes the falloff concave (penalises small offsets
                  less than a linear ramp).  No free sigma parameter needed.
 
-    antisym    : torsion antisymmetry driving the combined ranking.  Based on
-                 the robust lateral fingerprint score_lr (U_z left/right), with
-                 a small bonus from score_tb when the vertical fingerprint
-                 agrees:  antisym = clip(score_lr_+ * (1 + 0.25*score_tb_+), 0, 1).
-                 score_tb can only raise antisym, never lower it, because on
-                 trimmed bodies U_y is noisy (local/lumped-mass motion).
+    antisym    : torsion strength driving the combined ranking.  It is the
+                 lever-arm-aware rigid-rotation fit rigid_uz (R^2 of Uz vs
+                 theta*Y, see rigid_rotation_fit), NOT the correlation score_lr.
+                 Correlation only tests left/right phase and is fooled by local
+                 modes whose sides are out of phase yet do not scale with the
+                 lever arm; rigid_uz is ~1 only for a genuine rotation and so
+                 separates the true torsion mode from the rest on physical
+                 grounds (no artificial exponent).  Range [0, 1].
 
-    combined   : linearity * centering * antisym * uniformity
+    combined   : antisym * gate(linearity) * gate(centering) * local_veto
 
-    Antisymmetry sub-scores (all in [-1, 1], +1 = torsion fingerprint present)
+                 antisym (the physical fingerprint) drives the ranking and is
+                 left ungated so it uses the full [0, 1] range; linearity and
+                 centering enter as smooth sigmoid quality gates (see _soft_gate)
+                 instead of raw linear factors, which keeps borderline torsion
+                 modes (high recall) while still letting the best mode stand out.
+                 uniformity is no longer a factor (near-constant across global
+                 modes; localisation handled by the local_veto from peak).
+
+    Classification sub-scores (all in [-1, 1], +1 = torsion fingerprint present)
         score_lr : -corr(Uz_left,  Uz_right)   lateral  fingerprint (U_z)
         score_tb : -corr(Uy_top,   Uy_bottom)  vertical fingerprint (U_y)
         score_ly : -corr(Uy_left,  Uy_right)   +1 = lateral-bending/roll antisym
         score_xvar : >= 0, relative variation of per-slice mean U_y along X.
                      ~0 = rigid roll (uniform U_y); large = lateral bending.
-    are returned for reference and classification.
+    These drive the TORSION/BENDING/ROLLING classification (classify_scores),
+    not the ranking; the ranking uses antisym (rigid_uz) above.
+
+    Diagnostic sub-score
+        rigid_uzuy : R^2 of the full (Uz, Uy) field vs the rigid-rotation
+                     prediction.  Stricter than rigid_uz but Uy is noisier on
+                     trimmed bodies, so it is reported only, not used to rank.
 
     Parameters
     ----------
@@ -310,12 +542,16 @@ def torsion_score_v2(
     min_radius_sq : nodes with Y^2+Z^2 < this excluded from theta_x calc
     peak_thr      : energy fraction in the hottest 1% of nodes above which the
                     mode is vetoed as local (combined forced to 0)
+    lin_gate      : linearity value at which the soft gate is 0.5 (below this the
+                    theta_x profile is too noisy/flat to trust)
+    cen_gate      : centering value at which the soft gate is 0.5 (below this the
+                    rotation centre sits too far from the geometric centre)
 
     Returns
     -------
     dict with keys:
         linearity, centering, antisym, uniformity, peak, combined,
-        x0, R2,
+        x0, R2, rigid_uzuy,
         score_lr, score_tb, score_ly, score_xvar,
         x_centers, theta_means   (profile arrays for plotting)
     """
@@ -386,13 +622,22 @@ def torsion_score_v2(
     # (flat profile -> ~0); lateral bending curves along X (-> large).
     score_xvar = _x_variation(X, uy, n_slices)
 
-    # antisym drives the combined ranking.  On real trimmed bodies U_z (lateral
-    # left/right) is the clean torsion fingerprint; U_y carries a lot of local
-    # motion (suspension, lumped masses), so score_tb is noisy and unreliable
-    # as a hard requirement.  Base antisym on score_lr and let score_tb only
-    # *boost* (never reduce) it when the vertical fingerprint agrees.
-    lr_pos = max(0.0, score_lr)
-    antisym = float(min(1.0, lr_pos * (1.0 + 0.25 * max(0.0, score_tb))))
+    # Rigid-rotation goodness-of-fit (lever-arm aware).  Unlike the correlation
+    # scores above, this measures how closely the field matches an ACTUAL
+    # rotation Uz = theta*Y, so it sees amplitude antisymmetry and lever-arm
+    # scaling, not just phase.  rigid_uz is the lateral fit used for ranking;
+    # rigid_uzuy is the stricter full-field fit, kept for diagnostics.
+    rigid_uz, rigid_uzuy = rigid_rotation_fit(
+        node_xyz, uy, uz, n_slices, min_radius_sq=min_radius_sq)
+
+    # antisym drives the combined ranking.  It is now the rigid-rotation fit
+    # (rigid_uz) rather than the correlation score_lr: corr only tests phase and
+    # is fooled by high-frequency local modes whose sides are out of phase but
+    # do not scale with the lever arm, whereas rigid_uz is ~1 only for a genuine
+    # rotation and degrades physically for everything else.  The correlation
+    # scores (score_lr, score_tb, score_ly, score_xvar) are retained above for
+    # CLASSIFICATION (torsion vs bending vs roll), keeping that logic untouched.
+    antisym = float(np.clip(rigid_uz, 0.0, 1.0))
 
     uniformity = spatial_uniformity(ux, uy, uz)
 
@@ -404,9 +649,26 @@ def torsion_score_v2(
     peak = peak_concentration(ux, uy, uz)
     local_veto = 0.0 if peak > peak_thr else 1.0
 
-    # product of four sub-scores, each in [0, 1] (not a geometric mean:
-    # adding factors does shrink the scale, but ranking is unaffected)
-    combined = linearity * centering * antisym * uniformity * local_veto
+    # Ranking metric (soft-gate form):
+    #   combined = antisym * gate(linearity) * gate(centering) * local_veto
+    #
+    # antisym (the rigid-rotation fit rigid_uz) is the discriminant
+    # and is left ungated so it spans the full [0, 1] range — this is what makes
+    # the top torsion mode stand out from the rest.  linearity and centering are
+    # quality conditions, applied as smooth sigmoid gates rather than raw linear
+    # factors: a raw product of four [0,1] terms compresses good modes toward
+    # zero (0.8^4 ~ 0.41) and barely separates them, whereas soft gates pass a
+    # qualified mode at ~1 and only bite when quality is genuinely poor.
+    # uniformity is dropped from the product: it is near-constant across global
+    # modes (torsion AND bending), so it only rescaled the ranking without
+    # discriminating; localisation is already handled by local_veto (peak).
+    # It is still returned for reference / plotting.
+    combined = (
+        antisym
+        * _soft_gate(linearity, lin_gate)
+        * _soft_gate(centering, cen_gate)
+        * local_veto
+    )
 
     return dict(
         linearity    = linearity,
@@ -417,6 +679,7 @@ def torsion_score_v2(
         combined     = combined,
         x0           = x0,
         R2           = R2,
+        rigid_uzuy   = rigid_uzuy,
         score_lr     = score_lr,
         score_tb     = score_tb,
         score_ly     = score_ly,
@@ -435,17 +698,35 @@ def scan_torsion_scores_v2(
     z_threshold: float = 50.0,
     min_radius_sq: float = 100.0,
     peak_thr: float = 0.6,
+    lin_gate: float = 0.30,
+    cen_gate: float = 0.40,
     skip_rigid: bool = True,
+    use_body_frame: bool = True,
 ) -> np.ndarray:
     """
     Compute torsion_score_v2 for every mode.
 
     peak_thr : modes parking more than this fraction of their energy in the
                hottest 1% of nodes are vetoed (combined forced to 0).
+    use_body_frame : if True (default), the node cloud's principal-axis body
+               frame is derived once (pca_body_frame) and BOTH coordinates and
+               modal displacements are projected into it before scoring, so the
+               torsion axis is the geometric longitudinal axis through the robust
+               centroid rather than the assumed global X axis through the origin.
+               Set False to score in the raw global frame (e.g. for comparison).
+
+    All downstream geometry (theta_x profile, rigid-rotation fit, antisymmetry
+    fingerprints, classification) then operates in the body frame, where axis 0
+    is longitudinal ("X"), axis 1 lateral ("Y") and axis 2 vertical ("Z"); the
+    existing sign conventions (Uz = +theta*Y) are preserved because the frame is
+    oriented to stay close to the global axes.
 
     Returns structured array sorted by ``combined`` descending, with fields:
         mode_idx, freq_hz, combined, linearity, centering, antisym, uniformity,
-        peak, x0, score_lr, score_tb, score_ly, score_xvar
+        peak, x0, rigid_uzuy, score_lr, score_tb, score_ly, score_xvar
+
+    antisym is the rigid-rotation fit (rigid_uz) that now drives the ranking;
+    rigid_uzuy is the stricter full-field fit kept for diagnostics.
     """
     nNodes = len(node_xyz)
     nModes = modes.shape[1]
@@ -453,21 +734,36 @@ def scan_torsion_scores_v2(
     Uy_idx = np.arange(1, 6 * nNodes, 6)
     Uz_idx = np.arange(2, 6 * nNodes, 6)
 
+    # Derive the body frame once and project coordinates into it.  Displacements
+    # are rotated per mode below (R @ u, no translation since u is a vector).
+    if use_body_frame:
+        centre, R, _ = pca_body_frame(node_xyz)
+        coords = (node_xyz - centre) @ R.T          # cols: long, lat, vert
+    else:
+        R = None
+        coords = node_xyz
+
     records = []
     for mi in range(nModes):
         if skip_rigid and freq[mi] < 0.5:
             continue
+        ux, uy, uz = modes[Ux_idx, mi], modes[Uy_idx, mi], modes[Uz_idx, mi]
+        if R is not None:
+            # rotate the displacement field into the body frame (vector, no shift)
+            u_body = np.column_stack([ux, uy, uz]) @ R.T
+            ux, uy, uz = u_body[:, 0], u_body[:, 1], u_body[:, 2]
         res = torsion_score_v2(
-            node_xyz,
-            modes[Ux_idx, mi], modes[Uy_idx, mi], modes[Uz_idx, mi],
+            coords,
+            ux, uy, uz,
             n_slices=n_slices, y_threshold=y_threshold,
             z_threshold=z_threshold, min_radius_sq=min_radius_sq,
-            peak_thr=peak_thr,
+            peak_thr=peak_thr, lin_gate=lin_gate, cen_gate=cen_gate,
         )
         records.append((
             mi + 1, float(freq[mi]),
             res["combined"], res["linearity"], res["centering"],
             res["antisym"], res["uniformity"], res["peak"], res["x0"],
+            res["rigid_uzuy"],
             res["score_lr"], res["score_tb"], res["score_ly"], res["score_xvar"],
         ))
 
@@ -481,6 +777,7 @@ def scan_torsion_scores_v2(
         ("uniformity", float),
         ("peak",       float),
         ("x0",         float),
+        ("rigid_uzuy", float),
         ("score_lr",   float),
         ("score_tb",   float),
         ("score_ly",   float),

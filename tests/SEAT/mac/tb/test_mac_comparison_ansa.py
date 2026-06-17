@@ -18,8 +18,15 @@ Run from anywhere:
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # tests/
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -31,7 +38,7 @@ from common.mac_core            import compute_mac
 from common.rigid_body          import remove_rigid_body_component
 from common.utils               import translational_dof_indices, densify
 from common.mac_core            import best_mac_per_mode, select_top_modes
-from test_helpers               import ask_variant
+from _helpers               import ask_variant
 
 F0_ENERGY  = 40.0
 N_TOP_MODES = 20   # modes shown in the comparison plot

@@ -10,14 +10,23 @@ then shows the full grid of all 30 elastic modes.
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Make project root and tests/ importable so this file runs under pytest
+# AND when executed directly (IDE Run button).  Walk up to the repo root
+# (dir containing the `common` package); _helpers lives in tests/.
+_here = Path(__file__).resolve()
+for _root in _here.parents:
+    if (_root / "common").is_dir() and (_root / "main.py").is_file():
+        break
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
 from simple_model.analysis.modal_analysis import run_modal_analysis
-from simple_model.geometry.chassis import _draw_mesh_lines, _set_equal_axes
-from common.visualization.mesh import draw_interpolated_frame
-from test_helpers import ask_mode
+from common.visualization.mesh import (
+    _draw_mesh_lines, _set_equal_axes, draw_interpolated_frame,
+)
+from _helpers import ask_mode
 
 SCALE = 0.5   # same as MATLAB scaleFact = 0.5
 
