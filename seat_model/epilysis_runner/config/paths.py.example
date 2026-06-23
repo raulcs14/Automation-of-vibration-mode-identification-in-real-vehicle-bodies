@@ -41,13 +41,3 @@ BIW_STATIC_DAT   = "000_Header_BIW_static_reference.dat"
 BIW_MATRICES_DAT = "000_Header_BIW_getKM.dat"
 
 BIW_OUTPUT_ROOT  = _BIW_ROOT
-
-# --- Legacy aliases (kept for backward compatibility) --------------------------
-_ANSA_ROOT   = _TB_ROOT
-MODAL_DIR    = TB_MODAL_DIR
-STATIC_DIR   = TB_STATIC_DIR
-MATRICES_DIR = TB_MATRICES_DIR
-MODAL_DAT    = TB_MODAL_DAT
-STATIC_DAT   = TB_STATIC_DAT
-MATRICES_DAT = TB_MATRICES_DAT
-OUTPUT_ROOT  = TB_OUTPUT_ROOT

@@ -551,7 +551,7 @@ def torsion_score_v2(
     -------
     dict with keys:
         linearity, centering, antisym, uniformity, peak, combined,
-        x0, R2, rigid_uzuy,
+        x0, rigid_uzuy,
         score_lr, score_tb, score_ly, score_xvar,
         x_centers, theta_means   (profile arrays for plotting)
     """
@@ -566,7 +566,6 @@ def torsion_score_v2(
     linearity = 0.0
     centering = 0.0
     x0        = float("nan")
-    R2        = 0.0
 
     if len(x_c) >= 4:
         coeffs  = np.polyfit(x_c, th, 1)
@@ -581,8 +580,7 @@ def torsion_score_v2(
         snr      = th_range / (noise + 1e-30)
         snr_weight = float(np.tanh(snr / 3.0))
 
-        R2        = R2_raw * snr_weight
-        linearity = R2
+        linearity = R2_raw * snr_weight
         slope     = float(coeffs[0])
 
         if abs(slope) > 1e-20:
@@ -678,7 +676,6 @@ def torsion_score_v2(
         peak         = peak,
         combined     = combined,
         x0           = x0,
-        R2           = R2,
         rigid_uzuy   = rigid_uzuy,
         score_lr     = score_lr,
         score_tb     = score_tb,

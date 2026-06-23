@@ -322,9 +322,6 @@ _ANALYSIS_DEFS_BY_MODEL = {
     },
 }
 
-# Default (kept for backward compatibility if imported externally)
-ANALYSIS_DEFS = _ANALYSIS_DEFS_BY_MODEL["TB"]
-
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------

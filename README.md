@@ -98,19 +98,26 @@ For the SEAT model, CONM2 mass nodes can be excluded from the DOF space before c
 
 ### Torsion ID — geometric torsion identification (SEAT only)
 
-Identifies torsional modes without reference shapes, using four multiplicative sub-scores:
+Identifies torsional modes without reference shapes. The ranking score combines
+one physical fingerprint with two soft-gated quality conditions and a local-mode veto:
 
 | Sub-score | What it measures |
 |---|---|
+| **antisym** | Lever-arm-aware rigid-rotation fit `rigid_uz` (R² of Uz vs θ·Y); drives the ranking |
 | **linearity** | The θx(X) rotation profile is linear with significant amplitude |
 | **centering** | Rotation centre x₀ is near the geometric centre of the vehicle |
-| **antisym** | Mean of the two torsion fingerprints (score_lr and score_tb) |
-| **uniformity** | Mode energy is globally distributed (suppresses local modes) |
+| **local_veto** | 0 if the mode parks >60 % of its energy in the hottest 1 % of nodes (local mode), else 1 |
 
-**Combined score** = linearity × centering × antisym × uniformity ∈ [0, 1]
+**Combined score** = antisym × gate(linearity) × gate(centering) × local_veto ∈ [0, 1]
+
+`antisym` is left ungated (full [0, 1] range) so the best torsion mode stands out;
+`linearity` and `centering` enter as smooth sigmoid gates (see `_soft_gate`) rather
+than raw factors, keeping borderline torsion modes while still penalising poor quality.
+`uniformity` (Shannon-entropy spread) is still computed for diagnostics but no longer
+enters the score — localisation is handled by the `peak`/`local_veto` term instead.
 
 A rigid rotation about X leaves two independent antisymmetric fingerprints
-(U_z = +θx·Y, U_y = −θx·Z), measured by:
+(U_z = +θx·Y, U_y = −θx·Z), used for classification:
 
 | Score | Definition | +1 means |
 |---|---|---|
@@ -123,11 +130,16 @@ Mode classification:
 
 | Condition | Type |
 |---|---|
-| score_lr > 0.5 **and** score_tb > 0.5 | TORSION (full rigid rotation about X) |
+| score_lr > 0.5 | TORSION (lateral U_z antisymmetry — the reliable rotation signature) |
 | score_lr < −0.5 | BENDING-V (in-phase vertical motion) |
 | score_tb / score_ly < −0.5, score_xvar small | ROLLING (rigid lateral roll) |
 | score_tb / score_ly < −0.5, score_xvar large | BENDING-L (lateral bending) |
 | otherwise | LOCAL / MIXED |
+
+TORSION is decided by `score_lr` alone: on real trimmed bodies the lateral
+left/right U_z fingerprint is the clean signature of a rotation about X, whereas
+`score_tb` (U_y based) is contaminated by local/lumped-mass motion, so it is
+reported as a confidence/coupling axis rather than used as a gate.
 
 ---
 
