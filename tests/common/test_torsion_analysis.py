@@ -150,6 +150,37 @@ def test_rigid_fit_offset_axis_lowers_score(box_nodes):
     assert r2_correct > r2_offset
 
 
+def test_rigid_fit_adapts_min_nodes_to_coarse_mesh():
+    """
+    A coarse model (few nodes per slice) must still recover a rigid rotation.
+
+    Regression test for the simple 35-node chassis: with a fixed min_nodes=8 no
+    slice qualified and rigid_uz collapsed to 0.  min_nodes=None now scales the
+    occupancy floor to the mesh, so a pure rotation still fits ~1.
+    """
+    # 5 cross-sections of 4 corner nodes each = 20 nodes; with n_slices=8 the
+    # average per-slice occupancy is well below the old fixed floor of 8.
+    xs = np.linspace(0.0, 4000.0, 5)
+    corners = np.array([[ 800.0,  600.0],
+                        [-800.0,  600.0],
+                        [ 800.0, -600.0],
+                        [-800.0, -600.0]])
+    nodes = np.array([[x, cy, cz] for x in xs for cy, cz in corners])
+
+    centre, R, _ = pca_body_frame(nodes)
+    xyz_b = (nodes - centre) @ R.T
+    _, uy, uz = rigid_rotation_field(xyz_b, axis_y=0.0, axis_z=0.0)
+
+    # adaptive (default): floor drops to 3 -> rotation recovered
+    rigid_uz, _ = rigid_rotation_fit(xyz_b, uy, uz, n_slices=8)
+    assert rigid_uz > 0.99
+
+    # the old fixed floor of 8 empties every slice -> degenerate 0 (documents
+    # exactly the bug the adaptive default fixes)
+    rigid_uz_fixed, _ = rigid_rotation_fit(xyz_b, uy, uz, n_slices=8, min_nodes=8)
+    assert rigid_uz_fixed == 0.0
+
+
 # ---------------------------------------------------------------------------
 # energy-distribution metrics
 # ---------------------------------------------------------------------------

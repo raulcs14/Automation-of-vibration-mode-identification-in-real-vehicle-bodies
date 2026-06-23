@@ -308,7 +308,7 @@ def plot_theta_profiles(
         rel   = comb / comb_max
         lin   = float(row["linearity"])
         cen   = float(row["centering"])
-        ant   = float(row["antisym"])      # rigid_uz, drives the ranking
+        ant   = float(row["antisym"])      # sqrt(rigid_uz * rigid_uzuy), drives the ranking
         x0    = float(row["x0"])
         mtype = _classify_row(row, thr)
 

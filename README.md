@@ -1,167 +1,154 @@
 # Automation of Vibration Mode Identification in Real Vehicle Bodies
 
-TFM project implementing an automated pipeline for identifying and classifying vibration modes of vehicle body structures using FEA, Modal Assurance Criterion (MAC), and geometric torsion scoring.
+Master's thesis (TFM) project: an automated pipeline that identifies and
+classifies the vibration modes of a vehicle body from its finite-element modal
+results — telling apart torsion, bending and rigid-body-like motions without a
+human inspecting every mode shape by hand.
 
-Two models are supported:
+It works on two models:
 
-- **Simple model** — analytical 3D beam-frame chassis built in Python/NumPy. No external files required, runs out of the box.
-- **SEAT model** — full vehicle FE model (Body in White and Trimmed Body) solved in ANSA/Epilysis. Requires HDF5 result files and a local paths configuration.
+- **Simple model** — a 3D beam-frame chassis built analytically in Python/NumPy.
+  Needs no external data and runs out of the box. Useful for developing and
+  validating the methods on a small, well-understood structure.
+- **SEAT model** — a full vehicle FE model (Body in White and Trimmed Body)
+  solved in ANSA/Epilysis. Reads the HDF5 result files that solver produces.
+
+---
+
+## What it does
+
+The pipeline offers two independent analyses (chosen from a menu in `main.py`):
+
+### 1. MAC — correlation with reference shapes
+Correlates each dynamic mode against a set of static reference deformations
+(heave, pitch, torsion, roll, …) using the **Modal Assurance Criterion**:
+
+$$\text{MAC}(i,j) = \frac{|\varphi_i^{T} W \psi_j|^2}{(\varphi_i^{T} W \varphi_i)(\psi_j^{T} W \psi_j)}$$
+
+A high MAC means the mode "looks like" that reference shape, so each mode gets
+named after its best match. Options:
+
+- **Weighting** `W`: Identity, Mass (M), Stiffness (K), or Energy (Mω² + K).
+- **Rigid-body removal** from the reference shapes before correlating.
+- **Subdomain averaging**: group nodes into zones and correlate the averaged
+  motion, reducing local-mesh noise. (For the SEAT model the zones come from the
+  element properties in the H5 file.)
+- **CONM2 exclusion** (SEAT): drop lumped-mass nodes from the DOF space.
+
+### 2. Torsion ID — geometric torsion identification
+Finds the torsion modes **without** any reference shape, purely from how the
+structure rotates about its longitudinal axis. Each mode gets a `combined` score
+and a class label (TORSION / BENDING-V / BENDING-L / ROLLING / LOCAL).
+
+The score asks one physical question — *"does this mode rotate like a rigid body
+about the car's long axis?"* — and gates it by two quality checks:
+
+```
+combined = antisym × gate(linearity) × gate(centering) × local_veto
+```
+
+| Term | Meaning |
+|---|---|
+| **antisym** | How well the mode matches an ideal rigid rotation. Geometric mean of two least-squares fits: the lateral law `Uz = θ·Y` and the full field that also requires `Uy = −θ·Z`. ~1 only for a real rotation. |
+| **linearity** | The per-slice rotation angle θ(X) grows linearly along the car (first torsion mode). |
+| **centering** | The rotation axis sits near the geometric centre, not at one end. |
+| **local_veto** | 0 if the mode's energy is concentrated in a tiny region (a local, non-global mode), else 1. |
+
+`linearity` and `centering` enter as smooth sigmoid gates, so a genuine torsion
+mode (good on every term) is barely touched while a poor one is suppressed —
+`antisym` is what makes the true torsion mode stand out in the ranking.
+
+The class label comes from antisymmetry fingerprints of the mode shape
+(`score_lr`, `score_tb`, …); a mode is called **TORSION** when its left/right
+vertical displacements are in opposite phase along the car.
 
 ---
 
 ## Installation
 
 ```bash
-pip install numpy scipy matplotlib h5py
+pip install -r requirements.txt
 ```
+
+Requires Python 3.10+ (`numpy`, `scipy`, `matplotlib`, `h5py`).
 
 ---
 
-## Quick start — Simple model
+## Usage
 
-No configuration needed. Just run:
-
+### Simple model — runs immediately
 ```bash
 python main.py
 ```
+Pick **Simple model** and a flow (MAC or Torsion ID). No setup, no data files.
 
-Select **Simple model** in the menu and choose a flow (MAC or Torsion ID).
+### SEAT model (BIW / TB)
+The SEAT model reads HDF5 results from ANSA/Epilysis. The empty folder tree is
+already in the repo (kept by `.gitkeep`); you only add the data files. Two cases:
 
----
+- **You already have the `.h5` result files** → drop each one into its folder
+  (exact name and path below), then run `python main.py`. Torsion ID needs only
+  the *modal* file; MAC needs all three.
 
-## Setup — SEAT model (BIW / TB)
+  | Needed by | File (TB shown; BIW is the same with `BIW`) | Put it in |
+  |---|---|---|
+  | Torsion ID + MAC | `000_Header_TB_modal_run.h5` | `data/seat_model/TB/ansa/modal/output/` |
+  | MAC only | `000_Header_TB_static_reference_run.h5` | `data/seat_model/TB/ansa/static/output/` |
+  | MAC only | `000_Header_TB_getKM.h5` | `data/seat_model/TB/ansa/matrices/output/` |
 
-The SEAT model reads results produced by ANSA/Epilysis. Follow these steps before running.
+  The file name must match exactly — the loader looks for these specific names.
+  (Folders ending in `input/` are for the ANSA `.dat` decks; results go in
+  `output/`.)
 
-### 1. Configure local paths
+- **You need to solve the model first** → put your `.dat` decks in the matching
+  `input/` folders, then configure your local Epilysis path and run the analyses:
+  ```bash
+  cp seat_model/epilysis_runner/config/paths.py.example \
+     seat_model/epilysis_runner/config/paths.py   # then edit EPILYSIS_EXE
+  python seat_model/epilysis_runner/run_analyses.py
+  ```
+  This writes the HDF5 result files into the `output/` folders. `paths.py` is
+  git-ignored, so each user keeps their own.
 
-```bash
-cp seat_model/epilysis_runner/config/paths.py.example \
-   seat_model/epilysis_runner/config/paths.py
-```
-
-Open `paths.py` and set `EPILYSIS_EXE` to the path of your local Epilysis executable:
-
-```python
-EPILYSIS_EXE = Path(r"C:\BETA_CAE_Systems\ansa_vXX.X.X\epilysis.bat")
-```
-
-`paths.py` is git-ignored — each user keeps their own copy.
-
-### 2. Place the ANSA input files
-
-Copy your `.dat` deck files into the corresponding input folders:
-
-```
-data/seat_model/
-├── BIW/ansa/
-│   ├── modal/input/       ← 000_Header_BIW_modal.dat
-│   ├── static/input/      ← 000_Header_BIW_static_reference.dat
-│   └── matrices/input/    ← 000_Header_BIW_getKM.dat
-└── TB/ansa/
-    ├── modal/input/       ← 000_Header_TB_modal.dat
-    ├── static/input/      ← 000_Header_TB_static_reference.dat
-    └── matrices/input/    ← 000_Header_TB_getKM.dat
-```
-
-### 3. Run the Epilysis analyses
-
-```bash
-python seat_model/epilysis_runner/run_analyses.py
-```
-
-This launches the modal, static, and matrix extraction analyses and writes the HDF5 result files to the corresponding `output/` folders.
-
-### 4. Run the pipeline
-
-```bash
-python main.py
-```
-
-Select **ANSA BIW** or **ANSA TB** and choose a flow.
+> `data/` is git-ignored — the FE result files are not committed.
 
 ---
 
-## Flows
+## Project layout
 
-### MAC — correlation with static reference shapes
-
-Correlates each dynamic mode against a set of static reference deformation patterns (heave, pitch, torsion, roll, etc.) using the MAC formula:
-
-$$\text{MAC}(i,j) = \frac{|\varphi_i^T W \psi_j|^2}{(\varphi_i^T W \varphi_i)(\psi_j^T W \psi_j)}$$
-
-Available weightings: **Identity**, **Mass (M)**, **Stiffness (K)**, **Energy (Mω² + K)**.
-
-Optional: remove the rigid-body component from the reference shapes before computing MAC.
-
-For the SEAT model, CONM2 mass nodes can be excluded from the DOF space before correlation.
-
-### Torsion ID — geometric torsion identification (SEAT only)
-
-Identifies torsional modes without reference shapes. The ranking score combines
-one physical fingerprint with two soft-gated quality conditions and a local-mode veto:
-
-| Sub-score | What it measures |
+| Folder | Contents |
 |---|---|
-| **antisym** | Lever-arm-aware rigid-rotation fit `rigid_uz` (R² of Uz vs θ·Y); drives the ranking |
-| **linearity** | The θx(X) rotation profile is linear with significant amplitude |
-| **centering** | Rotation centre x₀ is near the geometric centre of the vehicle |
-| **local_veto** | 0 if the mode parks >60 % of its energy in the hottest 1 % of nodes (local mode), else 1 |
+| `common/` | Model-agnostic core: MAC, rigid-body removal, subdomain reduction, torsion scoring, plotting. |
+| `simple_model/` | The analytical beam-frame chassis (geometry, FE assembly, solvers). |
+| `seat_model/` | SEAT model: HDF5 readers, modal/static loaders, subdomains, Epilysis runner. |
+| `scripts/` | Observation scripts — open figures or print tables. Run by hand, not collected by pytest. |
+| `tests/` | Automated verification (pytest, assertions only). |
+| `main.py` | Interactive entry point for both flows and both models. |
 
-**Combined score** = antisym × gate(linearity) × gate(centering) × local_veto ∈ [0, 1]
-
-`antisym` is left ungated (full [0, 1] range) so the best torsion mode stands out;
-`linearity` and `centering` enter as smooth sigmoid gates (see `_soft_gate`) rather
-than raw factors, keeping borderline torsion modes while still penalising poor quality.
-`uniformity` (Shannon-entropy spread) is still computed for diagnostics but no longer
-enters the score — localisation is handled by the `peak`/`local_veto` term instead.
-
-A rigid rotation about X leaves two independent antisymmetric fingerprints
-(U_z = +θx·Y, U_y = −θx·Z), used for classification:
-
-| Score | Definition | +1 means |
-|---|---|---|
-| **score_lr** | −corr(Uz_left, Uz_right) | torsion (lateral zones) / −1 = vertical bending |
-| **score_tb** | −corr(Uy_top, Uy_bottom) | torsion (upper/lower zones) / −1 = rigid roll |
-| **score_ly** | −corr(Uy_left, Uy_right) | lateral antisymmetry |
-| **score_xvar** | variation of per-slice mean U_y along X | distinguishes roll (≈0) from lateral bending (large) |
-
-Mode classification:
-
-| Condition | Type |
-|---|---|
-| score_lr > 0.5 | TORSION (lateral U_z antisymmetry — the reliable rotation signature) |
-| score_lr < −0.5 | BENDING-V (in-phase vertical motion) |
-| score_tb / score_ly < −0.5, score_xvar small | ROLLING (rigid lateral roll) |
-| score_tb / score_ly < −0.5, score_xvar large | BENDING-L (lateral bending) |
-| otherwise | LOCAL / MIXED |
-
-TORSION is decided by `score_lr` alone: on real trimmed bodies the lateral
-left/right U_z fingerprint is the clean signature of a rotation about X, whereas
-`score_tb` (U_y based) is contaminated by local/lumped-mass motion, so it is
-reported as a confidence/coupling axis rather than used as a gate.
+Inside `scripts/`, the first docstring line tags each file: `[VISUAL]` (look at
+one result), `[EXPLORATION]` (compare/iterate on a metric). Files in `tests/`
+are tagged `[VERIFICATION]`.
 
 ---
 
-## Tests and scripts
+## Tests
 
-The repository separates **automated verification** from **manual observation**:
+```bash
+pytest
+```
+Runs the verification suite (geometry, MAC properties, DOF reduction, torsion
+metrics, H5 pipeline). The visual `scripts/` are never collected.
 
-| Folder | Purpose | How to run |
-|---|---|---|
-| `tests/` | **Verification** — pytest with assertions, no figures, no input. Runs in CI. | `pytest` |
-| `scripts/` | **Observation** — open matplotlib figures and/or ask for input. Run by hand. | `py -3 scripts/<sub>/<name>.py` |
+---
 
-Every file declares its nature in the first docstring line:
+## AI assistance
 
-- `[VERIFICATION]` — assert-based test (in `tests/`)
-- `[VISUAL]` — opens a figure to look at a result (in `scripts/`)
-- `[EXPLORATION]` — experiments with / compares metrics (in `scripts/`)
-
-Naming inside `scripts/`: `view_*` (look at one result), `compare_*` (compare
-variants), `explore_*` (iterate on a metric).  `pytest` only collects `tests/`,
-so the visual scripts never pollute the suite.  Observation scripts import
-`_bootstrap` (path setup) and, when interactive, `_helpers` (prompt helpers).
+This project was developed with the help of **Claude Code** (Anthropic's
+AI coding assistant), used for code review, refactoring, test writing, and
+documentation. All AI-assisted changes were reviewed and validated by the author
+before being committed. The engineering decisions, the physical formulation of
+the torsion criteria, and the validation against the FE models are the author's
+own.
 
 ---
 

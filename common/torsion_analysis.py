@@ -234,7 +234,7 @@ def rigid_rotation_fit(
     uz: np.ndarray,
     n_slices: int,
     min_radius_sq: float = 100.0,
-    min_nodes: int = 8,
+    min_nodes: int | None = None,
 ) -> tuple[float, float]:
     """
     Goodness-of-fit of the modal field to an IDEAL rigid rotation about X.
@@ -288,7 +288,11 @@ def rigid_rotation_fit(
     n_slices      : number of X-bins
     min_radius_sq : nodes with Y^2 + Z^2 below this have no usable lever arm and
                     are excluded (same convention as theta_x_profile)
-    min_nodes     : a slice needs at least this many valid nodes to be fitted
+    min_nodes     : a slice needs at least this many valid nodes to be fitted.
+                    None (default) picks it from the mesh density: 8 for dense
+                    FE bodies (thousands of nodes) down to 3 for a coarse model
+                    like the 35-node simple chassis, where a fixed 8 would empty
+                    every slice and force the fit to 0.  Pass an int to override.
 
     Returns
     -------
@@ -296,6 +300,15 @@ def rigid_rotation_fit(
     """
     X, Y, Z = node_xyz[:, 0], node_xyz[:, 1], node_xyz[:, 2]
     valid   = (Y ** 2 + Z ** 2) > min_radius_sq
+
+    # Adaptive slice-occupancy floor: scale to the mesh so a coarse model is not
+    # rejected.  Average valid nodes per slice is n_valid / n_slices; require half
+    # of that, clamped to [3, 8].  Dense FE bodies hit the 8 cap (unchanged
+    # behaviour); the 35-node simple chassis drops to 3 so its slices qualify.
+    if min_nodes is None:
+        per_slice = int(valid.sum()) / max(n_slices, 1)
+        min_nodes = int(np.clip(round(per_slice / 2.0), 3, 8))
+
     bins    = np.linspace(X.min(), X.max(), n_slices + 1)
     bi      = np.digitize(X, bins)
 
@@ -498,13 +511,14 @@ def torsion_score_v2(
                  less than a linear ramp).  No free sigma parameter needed.
 
     antisym    : torsion strength driving the combined ranking.  It is the
-                 lever-arm-aware rigid-rotation fit rigid_uz (R^2 of Uz vs
-                 theta*Y, see rigid_rotation_fit), NOT the correlation score_lr.
-                 Correlation only tests left/right phase and is fooled by local
-                 modes whose sides are out of phase yet do not scale with the
-                 lever arm; rigid_uz is ~1 only for a genuine rotation and so
-                 separates the true torsion mode from the rest on physical
-                 grounds (no artificial exponent).  Range [0, 1].
+                 GEOMETRIC MEAN of the two rigid-rotation fits,
+                 sqrt(rigid_uz * rigid_uzuy) (see rigid_rotation_fit), NOT the
+                 correlation score_lr.  A true rigid rotation must satisfy both
+                 Uz = theta*Y (lateral, rigid_uz) AND Uy = -theta*Z (vertical,
+                 the extra term in rigid_uzuy); the geometric mean is the physical
+                 "AND" of the two R^2, so a mode antisymmetric in one plane only
+                 is penalised while a genuine torsion mode (high on both) is not.
+                 No artificial exponent.  Range [0, 1].
 
     combined   : antisym * gate(linearity) * gate(centering) * local_veto
 
@@ -523,7 +537,7 @@ def torsion_score_v2(
         score_xvar : >= 0, relative variation of per-slice mean U_y along X.
                      ~0 = rigid roll (uniform U_y); large = lateral bending.
     These drive the TORSION/BENDING/ROLLING classification (classify_scores),
-    not the ranking; the ranking uses antisym (rigid_uz) above.
+    not the ranking; the ranking uses antisym = sqrt(rigid_uz * rigid_uzuy) above.
 
     Diagnostic sub-score
         rigid_uzuy : R^2 of the full (Uz, Uy) field vs the rigid-rotation
@@ -622,20 +636,31 @@ def torsion_score_v2(
 
     # Rigid-rotation goodness-of-fit (lever-arm aware).  Unlike the correlation
     # scores above, this measures how closely the field matches an ACTUAL
-    # rotation Uz = theta*Y, so it sees amplitude antisymmetry and lever-arm
-    # scaling, not just phase.  rigid_uz is the lateral fit used for ranking;
-    # rigid_uzuy is the stricter full-field fit, kept for diagnostics.
+    # rotation, so it sees amplitude antisymmetry and lever-arm scaling, not just
+    # phase.  Two R^2 are returned: rigid_uz uses the lateral Uz=theta*Y law only;
+    # rigid_uzuy uses the FULL field (Uz=theta*Y AND Uy=-theta*Z).
     rigid_uz, rigid_uzuy = rigid_rotation_fit(
         node_xyz, uy, uz, n_slices, min_radius_sq=min_radius_sq)
 
-    # antisym drives the combined ranking.  It is now the rigid-rotation fit
-    # (rigid_uz) rather than the correlation score_lr: corr only tests phase and
-    # is fooled by high-frequency local modes whose sides are out of phase but
-    # do not scale with the lever arm, whereas rigid_uz is ~1 only for a genuine
-    # rotation and degrades physically for everything else.  The correlation
-    # scores (score_lr, score_tb, score_ly, score_xvar) are retained above for
-    # CLASSIFICATION (torsion vs bending vs roll), keeping that logic untouched.
-    antisym = float(np.clip(rigid_uz, 0.0, 1.0))
+    # antisym drives the combined ranking.  A genuine torsion mode must satisfy
+    # BOTH rigid-rotation laws simultaneously: Uz = theta*Y (lateral, rigid_uz)
+    # AND Uy = -theta*Z (vertical, the extra constraint inside rigid_uzuy).  We
+    # therefore use the GEOMETRIC MEAN of the two R^2 as the discriminant:
+    #
+    #     antisym = sqrt(rigid_uz * rigid_uzuy)
+    #
+    # This is a physical "AND" of two independent goodness-of-fit measures, not an
+    # artificial exponent: a mode with a clean lateral fingerprint but a poor
+    # vertical one (antisymmetric in one plane only -> not a true rigid rotation)
+    # is penalised, while a real torsion mode, high on both, is barely touched.
+    # It sharpens the separation of the top torsion mode from look-alikes on both
+    # the simple chassis and the trimmed body without distorting absolute scores
+    # (geometric mean, unlike the raw product, does not over-penalise the noisier
+    # Uy fit on trimmed bodies).  The correlation scores (score_lr, score_tb,
+    # score_ly, score_xvar) are retained above for CLASSIFICATION only.
+    ruz  = float(np.clip(rigid_uz,   0.0, 1.0))
+    ruzy = float(np.clip(rigid_uzuy, 0.0, 1.0))
+    antisym = float(np.sqrt(ruz * ruzy))
 
     uniformity = spatial_uniformity(ux, uy, uz)
 
@@ -650,7 +675,7 @@ def torsion_score_v2(
     # Ranking metric (soft-gate form):
     #   combined = antisym * gate(linearity) * gate(centering) * local_veto
     #
-    # antisym (the rigid-rotation fit rigid_uz) is the discriminant
+    # antisym (sqrt(rigid_uz * rigid_uzuy)) is the discriminant
     # and is left ungated so it spans the full [0, 1] range — this is what makes
     # the top torsion mode stand out from the rest.  linearity and centering are
     # quality conditions, applied as smooth sigmoid gates rather than raw linear
@@ -722,7 +747,8 @@ def scan_torsion_scores_v2(
         mode_idx, freq_hz, combined, linearity, centering, antisym, uniformity,
         peak, x0, rigid_uzuy, score_lr, score_tb, score_ly, score_xvar
 
-    antisym is the rigid-rotation fit (rigid_uz) that now drives the ranking;
+    antisym is sqrt(rigid_uz * rigid_uzuy) (geometric mean of the lateral and
+    full-field rigid fits) that drives the ranking;
     rigid_uzuy is the stricter full-field fit kept for diagnostics.
     """
     nNodes = len(node_xyz)

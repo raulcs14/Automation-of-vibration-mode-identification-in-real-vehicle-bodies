@@ -6,7 +6,8 @@ Run:  py scripts/torsion/explore_tb_torsion_scores.py
 combined = antisym * gate(linearity) * gate(centering) * local_veto
   linearity : theta_x(X) profile is linear with real amplitude (not flat)
   centering : rotation centre near the geometric centre of the vehicle
-  antisym   : lever-arm-aware rigid-rotation fit rigid_uz (R^2 of Uz vs theta*Y);
+  antisym   : sqrt(rigid_uz * rigid_uzuy), geometric mean of the lateral
+              (Uz=theta*Y) and full-field (also Uy=-theta*Z) rigid-rotation fits;
               drives the ranking.  score_lr/score_tb remain for classification.
 
 Classification from the antisymmetry fingerprints (see common.torsion_analysis

@@ -402,7 +402,8 @@ def _run_torsion_id(model: str, variant: str) -> None:
     """
     Torsion mode identification flow based on geometric criteria:
         combined = antisym x gate(linearity) x gate(centering) x local_veto
-    where antisym is the lever-arm-aware rigid-rotation fit (rigid_uz).
+    where antisym = sqrt(rigid_uz x rigid_uzuy) is the geometric mean of the
+    lateral and full-field rigid-rotation fits.
 
     Supports:
       - ANSA BIW / TB  : loaded from H5 modal file (coords in mm)
@@ -463,8 +464,9 @@ def _run_torsion_id(model: str, variant: str) -> None:
 
     # --- Console table ---
     print()
-    # 'ant' is the rigid-rotation fit rigid_uz (drives the ranking); 'rig_uy'
-    # is the stricter full (Uz,Uy) rigid fit, shown for diagnostics.  uniformity
+    # 'ant' is sqrt(rigid_uz * rigid_uzuy), the geometric mean of the lateral and
+    # full-field rigid fits that drives the ranking; 'rig_uy' is the full (Uz,Uy)
+    # fit alone, shown so the vertical-fit contribution is visible.  uniformity
     # is no longer displayed: it does not enter the ranking, and the local-mode
     # protection it used to provide is now handled by the 'peak' veto (which is
     # stricter for a dominant peak on a low background — see peak_concentration).
