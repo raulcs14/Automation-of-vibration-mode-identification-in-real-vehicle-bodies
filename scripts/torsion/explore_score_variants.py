@@ -1,5 +1,5 @@
 """
-Compare candidate torsion-score formulas on the TB model.
+[EXPLORATION] Compare candidate torsion-score formulas on the TB model.
 
 Goal (Raul's brief): make the first torsion mode stand out from the rest,
 kill false positives, use the full [0,1] range, and never drop a real torsion
@@ -11,7 +11,7 @@ antisym, uniformity, peak, score_lr, score_tb) and recombines them several
 ways, then reports a separability diagnostic for each variant so you can pick
 the formula with evidence instead of intuition.
 
-Run:  py tests/SEAT/torsion_identification/explore_score_variants.py
+Run:  py scripts/torsion/explore_score_variants.py
 
 Variants
 --------
@@ -30,9 +30,8 @@ Separability diagnostic (higher = more "differential")
 
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 
 from seat_model.reader import read_hdf5_modal

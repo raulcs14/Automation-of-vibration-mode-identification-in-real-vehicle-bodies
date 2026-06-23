@@ -1,5 +1,5 @@
 """
-MAC comparison across all variants for the ANSA Trimmed-Body model.
+[EXPLORATION] MAC comparison across all variants for the ANSA Trimmed-Body model.
 
 Computes in one shot:
   - Plain MAC (identity)
@@ -13,21 +13,13 @@ Shows:
   2. Summary table printed to console
 
 Run from anywhere:
-    py -3 tests/SEAT/mac/tb/test_mac_comparison_ansa.py
+    py -3 scripts/seat/compare_mac_ansa.py
 """
 
 import sys
 from pathlib import Path
-# Make project root and tests/ importable so this file runs under pytest
-# AND when executed directly (IDE Run button).  Walk up to the repo root
-# (dir containing the `common` package); _helpers lives in tests/.
-_here = Path(__file__).resolve()
-for _root in _here.parents:
-    if (_root / "common").is_dir() and (_root / "main.py").is_file():
-        break
-sys.path.insert(0, str(_root))
-sys.path.insert(0, str(_root / "tests"))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm

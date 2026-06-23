@@ -26,6 +26,13 @@ _REPO_ROOT   = Path(__file__).resolve().parents[1]
 _DATA_ROOT   = _REPO_ROOT / "data" / "seat_model"
 _JSON_NAME   = "subdomains.json"
 
+# Default modal H5 per variant — used to read PID zones straight from the mesh
+# when no subdomains.json export is available (works for BIW and TB alike).
+_H5_MODAL = {
+    "BIW": _DATA_ROOT / "BIW" / "ansa" / "modal" / "output" / "000_Header_BIW_modal_run.h5",
+    "TB":  _DATA_ROOT / "TB"  / "ansa" / "modal" / "output" / "000_Header_TB_modal_run.h5",
+}
+
 # ---------------------------------------------------------------------------
 # Geometry cuts (mm) — BIW fallback only
 # ---------------------------------------------------------------------------
@@ -45,14 +52,19 @@ def build_subdomains(
     node_ids: np.ndarray,
     node_xyz: np.ndarray,
     json_path: Optional[Path] = None,
+    h5_path: Optional[Path] = None,
 ) -> Dict[str, List[int]]:
     """
     Build subdomains as positional indices into node_ids for BIW or TB.
 
-    Looks for ``data/seat_model/<variant>/meta/subdomains.json`` (produced by
-    ``export_biw_subdomains.py``).  For BIW falls back to geometric zones
-    if the file is missing; TB raises an error instead since there is no
-    meaningful geometric fallback for a trimmed body.
+    Source priority:
+      1. ``data/seat_model/<variant>/meta/subdomains.json`` (META export), if present.
+      2. PID zones read straight from the modal H5 element connectivity
+         (``read_hdf5_pid_subdomains``) — works for BIW and TB, no JSON needed.
+      3. BIW only: geometric coordinate zones, as a last resort.
+
+    TB has no geometric fallback, so if neither the JSON nor the H5 is available
+    it raises FileNotFoundError.
 
     Parameters
     ----------
@@ -60,6 +72,8 @@ def build_subdomains(
     node_ids : (nNodes,) int   — Nastran GRID IDs in A-set order
     node_xyz : (nNodes, 3) float — node coordinates [mm]
     json_path : override path to subdomains.json
+    h5_path   : override path to the modal H5 (defaults to the variant's standard
+                output file) used for the PID-zone fallback
 
     Returns
     -------
@@ -72,13 +86,19 @@ def build_subdomains(
         print(f"  [subdomains] loading PID zones from {resolved}")
         return _build_from_json(resolved, node_ids)
 
+    h5 = Path(h5_path) if h5_path is not None else _H5_MODAL.get(variant)
+    if h5 is not None and h5.exists():
+        print(f"  [subdomains] JSON not found, reading PID zones from {h5.name}")
+        return _build_from_h5(h5, node_ids)
+
     if variant == "BIW":
-        print("  [subdomains] JSON not found, falling back to geometric zones")
+        print("  [subdomains] JSON/H5 not found, falling back to geometric zones")
         return _build_geometric(node_xyz)
 
     raise FileNotFoundError(
-        f"Subdomain JSON not found: {resolved}\n"
-        f"Run export_biw_subdomains.py in META with VARIANT='{variant}'."
+        f"No subdomain source for {variant}: neither {resolved} nor a modal H5 "
+        f"({h5}) was found.\nRun export_biw_subdomains.py in META, or provide the "
+        f"modal H5 so PID zones can be read directly."
     )
 
 
@@ -98,6 +118,12 @@ def build_biw_subdomains(
 def _build_from_json(json_path: Path, node_ids: np.ndarray) -> Dict[str, List[int]]:
     with open(json_path, encoding="utf-8") as f:
         pid_grids: Dict[str, List[int]] = json.load(f)
+    return grid_ids_to_node_indices(pid_grids, node_ids)
+
+
+def _build_from_h5(h5_path: Path, node_ids: np.ndarray) -> Dict[str, List[int]]:
+    from seat_model.reader import read_hdf5_pid_subdomains
+    pid_grids = read_hdf5_pid_subdomains(h5_path)
     return grid_ids_to_node_indices(pid_grids, node_ids)
 
 

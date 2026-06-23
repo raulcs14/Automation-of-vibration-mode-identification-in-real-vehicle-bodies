@@ -1,15 +1,15 @@
 """
-Diagnostic script: inspect what average_zones does to modes and reference
+[EXPLORATION] Diagnostic script: inspect what average_zones does to modes and reference
 in the BIW model, and why MAC values may be spurious.
 
 Run from anywhere:
-    py -3 tests/SEAT/mac/biw/debug_subdomain_mac_biw.py
+    py -3 scripts/seat/explore_subdomain_mac_biw.py
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))  # repo root
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 

@@ -1,5 +1,5 @@
 """
-Subdomain MAC analysis for the Trimmed Body (TB) model.
+[VISUAL] Subdomain MAC analysis for the Trimmed Body (TB) model.
 
 Shows the effect of subdomain averaging on mode identification, with and
 without CONM2 (lumped mass) node removal.  Four variants are compared:
@@ -12,26 +12,17 @@ without CONM2 (lumped mass) node removal.  Four variants are compared:
 Weighting is chosen interactively: Identity / Mass / Stiffness / Energy.
 
 Run from anywhere:
-    py -3 tests/SEAT/mac/tb/test_subdomain_mac_tb.py
+    py -3 scripts/seat/view_subdomain_mac_tb.py
 """
 
 import sys
-# Windows console defaults to cp1252; force UTF-8 so unicode prints
-# (arrows, pi, degree signs) don't crash when run via the IDE Run button.
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
     pass
-from pathlib import Path
-# Make project root and tests/ importable so this file runs under pytest
-# AND when executed directly (IDE Run button).  Walk up to the repo root
-# (dir containing the `common` package); _helpers lives in tests/.
-_here = Path(__file__).resolve()
-for _root in _here.parents:
-    if (_root / "common").is_dir() and (_root / "main.py").is_file():
-        break
-sys.path.insert(0, str(_root))
-sys.path.insert(0, str(_root / "tests"))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -39,7 +30,7 @@ import matplotlib.cm as cm
 
 from seat_model.modal_analysis  import run_modal_analysis, N_RIGID_BODY_MODES
 from seat_model.static_model    import run_static_model, REF_NAMES
-from seat_model.subdomains      import build_biw_subdomains
+from seat_model.subdomains      import build_subdomains
 from common.dof_reduction       import DofSpace
 from common.subdomain           import average_zones, reduce_mk_by_subdomains
 from common.mac_core            import compute_mac
@@ -83,7 +74,7 @@ def _compute_variants(space: DofSpace, label: str, w_idx: int) -> dict:
     results = {}
     results[f"Full  {label}"] = compute_mac(Phi_t, Psi_t, W_full)
 
-    subdomains = build_biw_subdomains(space.node_ids, space.node_xyz)
+    subdomains = build_subdomains("TB", space.node_ids, space.node_xyz)
     Phi_z = average_zones(Phi_t, subdomains, n_nodes)
     Psi_z = average_zones(Psi_t, subdomains, n_nodes)
 

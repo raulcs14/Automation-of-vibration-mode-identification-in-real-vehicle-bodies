@@ -1,25 +1,30 @@
 """
-Diagnostic: intra-slice theta_x dispersion for the top torsional modes.
+[EXPLORATION] Diagnostic: intra-slice theta_x dispersion for the top torsional modes.
 
 For each slice, plots the mean theta_x AND the +/- std band.
 If std >> mean in many slices, the per-slice average is not representative
 (rotations cancel within the bin).
 
-Run:  py tests/SEAT/torsion_identification/explore_slice_dispersion.py
+This operates in the SAME geometry as the production pipeline: coordinates and
+modal displacements are projected into the PCA body frame (pca_body_frame) before
+theta_x is computed, so the rotation axis is the levelled longitudinal axis
+through the robust centroid (not the raw global origin, which sits ~283 mm below
+the real axis in Z for the TB model).  Classification also matches the core
+(_classify_row): TORSION is decided by score_lr alone.
 
-DELETE this file once the diagnostic is no longer needed.
+Run:  py scripts/torsion/explore_slice_dispersion.py
 """
 
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 
 from seat_model.reader import read_hdf5_modal
-from common.torsion_analysis import scan_torsion_scores_v2
+from common.torsion_analysis import scan_torsion_scores_v2, pca_body_frame
+from common.visualization.torsion_plots import _classify_row
 
 # ---------------------------------------------------------------------------
 MODAL_H5 = Path("data/seat_model/TB/ansa/modal/output/000_Header_TB_modal_run.h5")
@@ -27,14 +32,6 @@ N_SLICES  = 30
 N_TOP     = 6
 THR       = 0.5
 # ---------------------------------------------------------------------------
-
-
-def _classify(suz, suy):
-    # suz = score_lr (lateral U_z fingerprint), suy = score_tb (vertical U_y).
-    # Torsion needs BOTH fingerprints present (see common.torsion_analysis).
-    if min(suz, suy) > THR: return "TORSION"
-    if suy < -THR:          return "ROLLING"
-    return "OTHER"
 
 
 def theta_x_profile_with_std(node_xyz, uy, uz, n_slices, min_radius_sq=100.0):
@@ -71,22 +68,37 @@ def theta_x_profile_with_std(node_xyz, uy, uz, n_slices, min_radius_sq=100.0):
 
 
 print("Loading TB modes...")
-data     = read_hdf5_modal(MODAL_H5)
-node_xyz = data["node_xyz"]
-modes    = data["modes"]
-freq     = data["freq"]
-nNodes   = len(node_xyz)
+data       = read_hdf5_modal(MODAL_H5)
+node_xyz_g = data["node_xyz"]      # raw global coordinates
+modes      = data["modes"]
+freq       = data["freq"]
+nNodes     = len(node_xyz_g)
+
+# Project into the PCA body frame, exactly as scan_torsion_scores_v2 does, so the
+# theta_x profiles below use the real (levelled, centred) torsion axis rather than
+# the raw global origin.  coords carry the body-frame node positions; per mode we
+# rotate the (ux,uy,uz) displacement field with the same R (no translation).
+centre, R, _ = pca_body_frame(node_xyz_g)
+node_xyz = (node_xyz_g - centre) @ R.T          # body-frame coords (long, lat, vert)
 
 print("Computing torsion scores...")
-results = scan_torsion_scores_v2(node_xyz, modes, freq,
+results = scan_torsion_scores_v2(node_xyz_g, modes, freq,
                                  n_slices=N_SLICES, skip_rigid=True)
 
+# Classification matches the core (_classify_row): TORSION by score_lr alone.
 torsion_rows = [r for r in results
-                if _classify(float(r["score_lr"]), float(r["score_tb"]))
-                in {"TORSION", "ROLLING"}][:N_TOP]
+                if _classify_row(r, THR) in {"TORSION", "ROLLING"}][:N_TOP]
 
+Ux_idx = np.arange(0, 6 * nNodes, 6)
 Uy_idx = np.arange(1, 6 * nNodes, 6)
 Uz_idx = np.arange(2, 6 * nNodes, 6)
+
+
+def _body_frame_uyuz(mi: int):
+    """Return (uy, uz) of mode mi rotated into the body frame."""
+    u = np.column_stack([modes[Ux_idx, mi], modes[Uy_idx, mi], modes[Uz_idx, mi]]) @ R.T
+    return u[:, 1], u[:, 2]
+
 
 COLORS = {"TORSION": "firebrick", "ROLLING": "darkorange"}
 
@@ -98,11 +110,10 @@ axes = axes.flatten()
 for i, row in enumerate(torsion_rows):
     mi    = int(row["mode_idx"]) - 1
     fhz   = float(row["freq_hz"])
-    mtype = _classify(float(row["score_lr"]), float(row["score_tb"]))
+    mtype = _classify_row(row, THR)
     color = COLORS.get(mtype, "steelblue")
 
-    uy = modes[Uy_idx, mi]
-    uz = modes[Uz_idx, mi]
+    uy, uz = _body_frame_uyuz(mi)
     x_c, means, stds, counts = theta_x_profile_with_std(node_xyz, uy, uz, N_SLICES)
 
     # normalise so all modes are on the same scale
@@ -161,11 +172,12 @@ fig.tight_layout()
 
 def theta_x_by_quadrant(node_xyz, uy, uz, n_slices, min_radius_sq=100.0):
     """
-    For each X-slice compute mean theta_x separately for 4 quadrants:
-        L-Top : Y > 0, Z > Z_mid
-        L-Bot : Y > 0, Z <= Z_mid
-        R-Top : Y < 0, Z > Z_mid
-        R-Bot : Y < 0, Z <= Z_mid
+    For each X-slice compute mean theta_x separately for 4 quadrants, split at
+    the rotation axis (Y = 0 lateral, Z = 0 vertical, in the body frame):
+        L-Top : Y > 0, Z > 0
+        L-Bot : Y > 0, Z <= 0
+        R-Top : Y < 0, Z > 0
+        R-Bot : Y < 0, Z <= 0
 
     Returns
     -------
@@ -173,7 +185,11 @@ def theta_x_by_quadrant(node_xyz, uy, uz, n_slices, min_radius_sq=100.0):
     q         : dict with keys 'LT','LB','RT','RB' → (n_valid,) mean theta_x
     """
     X, Y, Z = node_xyz[:, 0], node_xyz[:, 1], node_xyz[:, 2]
-    Z_mid = float(Z.mean())
+    # Split top/bottom at the rotation axis itself.  node_xyz is already in the
+    # body frame (centred on the robust centroid), so the torsion axis is Z = 0 —
+    # the same axis theta_x is measured about below.  Using Z.mean() instead would
+    # offset the divider from the axis (mean != median centroid).
+    Z_mid = 0.0
 
     denom  = Y**2 + Z**2
     valid  = denom > min_radius_sq
@@ -213,10 +229,9 @@ axes2 = axes2.flatten()
 for i, row in enumerate(torsion_rows):
     mi    = int(row["mode_idx"]) - 1
     fhz   = float(row["freq_hz"])
-    mtype = _classify(float(row["score_lr"]), float(row["score_tb"]))
+    mtype = _classify_row(row, THR)
 
-    uy = modes[Uy_idx, mi]
-    uz = modes[Uz_idx, mi]
+    uy, uz = _body_frame_uyuz(mi)
     x_c, q = theta_x_by_quadrant(node_xyz, uy, uz, N_SLICES)
 
     # normalise by global max across all quadrants
@@ -245,8 +260,9 @@ for j in range(len(torsion_rows), len(axes2)):
 
 fig2.suptitle(
     f"Per-quadrant θₓ — top {len(torsion_rows)} TORSION/ROLLING modes\n"
-    "L/R = Y>0 / Y<0    Top/Bot = Z above/below mean Z",
-    fontsize=10,
+    "L/R = Y>0 / Y<0    Top/Bot = Z above/below the rotation axis (Z=0)\n"
+    "curves overlapping = rigid rotation;  curves diverging = section not rotating as one block",
+    fontsize=9,
 )
 fig2.tight_layout()
 plt.show()

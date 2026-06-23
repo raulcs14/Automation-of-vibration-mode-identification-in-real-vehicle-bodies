@@ -341,6 +341,92 @@ def read_hdf5_conm2_node_ids(hdf5_path: Path) -> np.ndarray:
     return np.unique(grid_ids)
 
 
+def read_hdf5_rbe_node_ids(hdf5_path: Path) -> np.ndarray:
+    """
+    Extract GRID IDs referenced by RBE2/RBE3 rigid/interpolation elements.
+
+    These are connector nodes (master/independent + dependent/weighted grids),
+    not part of any shell or bar property, so they carry no PID.  Used to
+    classify the nodes that fall outside the PID subdomains.
+
+    Layout in the Epilysis H5 (both stored as groups):
+      RBE2: RB.GN  (independent grid) + GM.ID  (dependent grids)
+      RBE3: IDENTITY.REFG (reference grid) + G.ID (weighted grids)
+
+    Returns sorted unique (nRBE,) int array; empty if no RBE elements present.
+    """
+    ids: set[int] = set()
+    with h5py.File(hdf5_path, "r") as f:
+        rbe2 = f.get("EPILYSIS/INPUT/ELEMENT/RBE2")
+        if rbe2 is not None:
+            if "RB" in rbe2:
+                ids.update(int(v) for v in np.asarray(rbe2["RB"]["GN"], dtype=int))
+            if "GM" in rbe2:
+                ids.update(int(v) for v in np.asarray(rbe2["GM"]["ID"], dtype=int))
+        rbe3 = f.get("EPILYSIS/INPUT/ELEMENT/RBE3")
+        if rbe3 is not None:
+            if "IDENTITY" in rbe3:
+                ids.update(int(v) for v in np.asarray(rbe3["IDENTITY"]["REFG"], dtype=int))
+            if "G" in rbe3:
+                ids.update(int(v) for v in np.asarray(rbe3["G"]["ID"], dtype=int))
+    return np.array(sorted(ids), dtype=int)
+
+
+def read_hdf5_pid_subdomains(hdf5_path: Path,
+                             element_types=("CQUAD4", "CTRIA3", "CBAR")) -> dict:
+    """
+    Build subdomains keyed by property ID (PID) directly from the element
+    connectivity stored in an Epilysis H5 file.
+
+    Each structural element carries a PID and its corner GRID IDs (field ``G``).
+    Grouping the GRID IDs by PID gives one zone per property — the same
+    PID->GRID mapping that ``export_biw_subdomains.py`` produces in META, but
+    read straight from the H5 so it works for BIW and TB without a separate
+    JSON export.  The structural mesh is identical across variants (TB is BIW
+    plus lumped masses), so the zones match.
+
+    Parameters
+    ----------
+    hdf5_path     : path to the Epilysis modal/static H5 file
+    element_types : element groups under EPILYSIS/INPUT/ELEMENT to scan
+                    (shells by default; CBAR included so beam-only properties
+                    are not dropped — absent groups are silently skipped)
+
+    Returns
+    -------
+    dict  {f"pid_{PID}": sorted list of unique GRID IDs}
+        Zones are ordered by ascending PID.  Empty if no elements are found.
+    """
+    pid_to_grids: dict[int, set] = {}
+    with h5py.File(hdf5_path, "r") as f:
+        for et in element_types:
+            path = f"EPILYSIS/INPUT/ELEMENT/{et}"
+            if path not in f:
+                continue
+            elems  = f[path][:]
+            fields = elems.dtype.names
+            pids   = np.asarray(elems["PID"], dtype=int)
+
+            # Connectivity field differs by element: shells store all corners in
+            # ``G`` (nElem, nCorners); CBAR stores its two ends in ``GA``/``GB``.
+            if "G" in fields:
+                node_cols = [np.asarray(elems["G"], dtype=int)]
+            else:
+                node_cols = [np.asarray(elems[c], dtype=int)[:, None]
+                             for c in ("GA", "GB") if c in fields]
+            if not node_cols:
+                continue
+            grids = np.hstack(node_cols)                     # (nElem, nNodesPerElem)
+
+            for pid, g in zip(pids, grids):
+                pid_to_grids.setdefault(int(pid), set()).update(int(n) for n in g if n > 0)
+
+    return {
+        f"pid_{pid}": sorted(grids)
+        for pid, grids in sorted(pid_to_grids.items())
+    }
+
+
 # ---------------------------------------------------------------------------
 # DOF-set mask helper (used in tests and for G-set -> A-set filtering)
 # ---------------------------------------------------------------------------

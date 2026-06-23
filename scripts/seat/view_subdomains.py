@@ -1,29 +1,54 @@
 """
-Visual inspection of shell subdomains (PID zones) for BIW or TB.
+[VISUAL] Visual inspection of shell subdomains (PID zones) for BIW or TB.
 
 Node cloud is coloured by subdomain; 2-D projections are also shown.
 
+Works for BIW and TB: PID zones are taken from the META subdomains.json if
+present, otherwise read straight from the modal H5 element connectivity
+(read_hdf5_pid_subdomains), so no separate export is needed.
+
 Run from anywhere:
-    py -3 tests/SEAT/mac/biw/test_visualize_subdomains_biw.py
+    py -3 scripts/seat/view_subdomains.py
 """
 
 import sys
 from pathlib import Path
-# Make the project root importable so this file runs under pytest AND when
-# executed directly (IDE Run button).  Walk up to the repo root (the dir that
-# contains the `common` package) instead of hard-coding a parents[N] depth.
-_p = Path(__file__).resolve()
-for _root in _p.parents:
-    if (_root / "common").is_dir() and (_root / "main.py").is_file():
-        break
-sys.path.insert(0, str(_root))  # repo root
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 from seat_model.modal_analysis import run_modal_analysis
-from seat_model.subdomains     import build_subdomains
+from seat_model.subdomains     import build_subdomains, _H5_MODAL
+from seat_model.reader         import (
+    read_hdf5_conm2_node_ids, read_hdf5_rbe_node_ids,
+)
+
+
+def _classify_uncovered(uncovered_ids: np.ndarray, variant: str) -> dict:
+    """
+    Split the GRID IDs that fall outside every PID zone by what they are.
+
+    A node has no PID only if it belongs to no shell/bar element.  Such nodes
+    are either lumped masses (CONM2) or connector grids (RBE2/RBE3); anything
+    left is a free/orphan grid not attached to any element.  Categories are
+    exclusive in this priority order: mass -> connector -> orphan.
+
+    Returns {"mass": [...], "connector": [...], "orphan": [...]}.
+    """
+    h5 = _H5_MODAL.get(variant)
+    uncovered = set(int(n) for n in uncovered_ids)
+    if h5 is None or not h5.exists():
+        return {"mass": [], "connector": [], "orphan": sorted(uncovered)}
+
+    conm2 = set(int(x) for x in read_hdf5_conm2_node_ids(h5))
+    rbe   = set(int(x) for x in read_hdf5_rbe_node_ids(h5))
+
+    mass      = uncovered & conm2
+    connector = (uncovered & rbe) - mass
+    orphan    = uncovered - mass - connector
+    return {"mass": sorted(mass), "connector": sorted(connector), "orphan": sorted(orphan)}
 
 
 # ---------------------------------------------------------------------------
@@ -50,12 +75,13 @@ def _set_equal_axes(ax, xyz: np.ndarray) -> None:
     ax.set_zlim(center[2] - half, center[2] + half)
 
 
-def _plot(node_xyz: np.ndarray, subdomains: dict, variant: str) -> None:
+def _plot(node_xyz: np.ndarray, subdomains: dict, variant: str,
+          node_ids: np.ndarray) -> None:
     zone_names = list(subdomains.keys())
     n_zones    = len(zone_names)
     n_nodes    = len(node_xyz)
 
-    cmap = plt.cm.get_cmap("tab20", n_zones)
+    cmap = plt.colormaps["tab20"].resampled(n_zones)
 
     # Assign colour: first zone wins for shared-edge nodes
     node_zone = np.full(n_nodes, -1, dtype=int)
@@ -68,9 +94,20 @@ def _plot(node_xyz: np.ndarray, subdomains: dict, variant: str) -> None:
     colors = np.tile([0.75, 0.75, 0.75, 0.15], (n_nodes, 1))
     colors[assigned] = [cmap(node_zone[i]) for i in np.where(assigned)[0]]
 
-    n_unassigned = (~assigned).sum()
+    n_unassigned = int((~assigned).sum())
     if n_unassigned:
-        print(f"  WARNING: {n_unassigned} nodes not covered by any zone")
+        uncovered_ids = np.asarray(node_ids)[~assigned]
+        cats = _classify_uncovered(uncovered_ids, variant)
+        print(f"  WARNING: {n_unassigned} nodes not covered by any PID zone "
+              f"(no shell/bar element):")
+        labels = [
+            ("mass nodes (CONM2)",    len(cats["mass"])),
+            ("connector nodes (RBE)", len(cats["connector"])),
+            ("orphan grids (no elem)", len(cats["orphan"])),
+        ]
+        for name, count in labels:
+            if count:
+                print(f"    - {name:<22}: {count}")
 
     # --- Figure 1: 3-D view + legend ----------------------------------------
     fig = plt.figure(figsize=(14, 7))
@@ -96,10 +133,14 @@ def _plot(node_xyz: np.ndarray, subdomains: dict, variant: str) -> None:
         )
         for zi, name in enumerate(zone_names)
     ]
+    # ~25 entries per column so many-zone models (e.g. TB, 63 PIDs) wrap into
+    # several readable columns instead of one long overflowing list.
+    legend_ncol = max(1, int(np.ceil(n_zones / 25)))
     ax_leg.legend(
         handles=patches, loc="center left",
-        fontsize=6, ncol=max(1, n_zones // 35),
+        fontsize=6, ncol=legend_ncol,
         title="Zone (PID)", title_fontsize=7, frameon=False,
+        columnspacing=1.0, handletextpad=0.4,
     )
     fig.tight_layout()
 
@@ -151,7 +192,7 @@ def main():
         print(f"  {name:<12}  {len(subdomains[name]):>6}")
     print(f"\n  Unique assigned nodes : {sum(1 for v in subdomains.values() for _ in v)}")
 
-    _plot(node_xyz, subdomains, variant)
+    _plot(node_xyz, subdomains, variant, node_ids)
     plt.show()
 
 

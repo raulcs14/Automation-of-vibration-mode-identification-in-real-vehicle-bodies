@@ -1,7 +1,7 @@
 """
-Sweep of torsion_score_v2 for all modes of the TB model.
+[EXPLORATION] Sweep of torsion_score_v2 for all modes of the TB model.
 
-Run:  py tests/SEAT/torsion_identification/explore_tb_torsion_scores.py
+Run:  py scripts/torsion/explore_tb_torsion_scores.py
 
 combined = antisym * gate(linearity) * gate(centering) * local_veto
   linearity : theta_x(X) profile is linear with real amplitude (not flat)
@@ -11,19 +11,18 @@ combined = antisym * gate(linearity) * gate(centering) * local_veto
 
 Classification from the antisymmetry fingerprints (see common.torsion_analysis
 and common.visualization.torsion_plots.classify_scores):
-  TORSION   : score_lr > 0.5 AND score_tb > 0.5  (left/right opposite in Z
-              and top/bottom opposite in Y — a full rigid rotation about X)
+  TORSION   : score_lr > 0.5                     (left/right opposite in Z — the
+              reliable rotation signature; score_tb is a confidence axis, not a gate)
   BENDING-V : score_lr < -0.5                    (sides in phase in Z)
-  ROLLING   : score_tb < -0.5, U_y uniform along X (rigid lateral roll)
+  ROLLING   : score_tb/score_ly < -0.5, U_y uniform along X (rigid lateral roll)
   BENDING-L : score_tb/score_ly < -0.5, U_y curves along X (score_xvar large)
   LOCAL/MIXED : otherwise
 """
 
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -148,7 +147,8 @@ for i, row in enumerate(top):
     ax.tick_params(labelsize=7)
 
 fig2.suptitle(
-    f"Top {N_TOP} TORSION/ROLLING modes by combined score  (linearity x centering x antisym,  {N_SLICES} slices)",
+    f"Top {N_TOP} TORSION modes by combined score  "
+    f"(combined = antisym x gate(linearity) x gate(centering) x local_veto,  {N_SLICES} slices)",
     fontsize=10
 )
 fig2.tight_layout()

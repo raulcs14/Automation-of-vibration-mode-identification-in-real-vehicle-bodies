@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Full pipeline verification for H5 reading and MAC computation — BIW and TB.
+[VERIFICATION] Full pipeline verification for H5 reading and MAC computation — BIW and TB.
 
 Checks:
   1. H5 modal read  — shapes, frequencies, nodes, DOFs
@@ -12,8 +12,8 @@ Checks:
   7. DofSpace       — remove_nodes and translational_slice keep consistency
 
 Run:
-    py -3 tests/SEAT/test_h5_pipeline.py
-    py -3 -m pytest tests/SEAT/test_h5_pipeline.py -v
+    py -3 tests/seat/test_h5_pipeline.py
+    py -3 -m pytest tests/seat/test_h5_pipeline.py -v
 """
 
 import sys
@@ -267,6 +267,62 @@ def _check_dofspace(variant: str, dyn: dict, stat: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 8. PID subdomains read from the H5 element connectivity (BIW and TB)
+# ---------------------------------------------------------------------------
+
+def _check_subdomains(variant: str, dyn: dict) -> None:
+    section(f"8. PID subdomains from H5 [{variant}]")
+    from seat_model.reader     import read_hdf5_pid_subdomains
+    from seat_model.subdomains import build_subdomains, _H5_MODAL
+
+    node_ids = dyn["node_ids"]
+
+    # raw PID->GRID mapping straight from the H5 mesh
+    pid_grids = read_hdf5_pid_subdomains(_H5_MODAL[variant])
+    check("read_hdf5_pid_subdomains: returns at least one PID zone",
+          len(pid_grids) > 0)
+    check("PID zone keys look like 'pid_<N>'",
+          all(k.startswith("pid_") for k in pid_grids))
+    all_grids = {g for grids in pid_grids.values() for g in grids}
+    check("all zone GRID IDs exist in the model node set",
+          all_grids.issubset(set(int(n) for n in node_ids)),
+          f"{len(all_grids - set(int(n) for n in node_ids))} stray IDs")
+
+    # build_subdomains falls back to the H5 (no JSON) -> positional indices
+    sub = build_subdomains(variant, node_ids, dyn["node_coordinates"])
+    check("build_subdomains: same zone count as raw PID mapping",
+          len(sub) == len(pid_grids),
+          f"got {len(sub)} vs {len(pid_grids)}")
+    n_nodes = len(node_ids)
+    flat = [i for idxs in sub.values() for i in idxs]
+    check("subdomain indices are valid positions into node_ids",
+          all(0 <= i < n_nodes for i in flat))
+    covered = len(set(flat))
+    check("most structural nodes are covered by a zone (> 95%)",
+          covered > 0.95 * n_nodes,
+          f"covered {covered}/{n_nodes}")
+
+    # Uncovered nodes carry no PID; they must classify exhaustively as
+    # mass (CONM2) / connector (RBE) / orphan (no element).
+    from seat_model.reader import read_hdf5_conm2_node_ids, read_hdf5_rbe_node_ids
+    model_ids   = set(int(n) for n in node_ids)
+    uncovered   = model_ids - all_grids
+    conm2       = set(int(x) for x in read_hdf5_conm2_node_ids(_H5_MODAL[variant]))
+    rbe         = set(int(x) for x in read_hdf5_rbe_node_ids(_H5_MODAL[variant]))
+    check("read_hdf5_rbe_node_ids: all returned IDs are real model nodes",
+          rbe.issubset(model_ids) if rbe else True)
+    mass        = uncovered & conm2
+    connector   = (uncovered & rbe) - mass
+    orphan      = uncovered - mass - connector
+    check("uncovered nodes classify exhaustively (mass+connector+orphan)",
+          len(mass) + len(connector) + len(orphan) == len(uncovered),
+          f"{len(mass)}+{len(connector)}+{len(orphan)} != {len(uncovered)}")
+    if variant == "TB":
+        check("TB has CONM2 mass nodes among the uncovered set",
+              len(mass) > 0, f"mass={len(mass)}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -281,6 +337,7 @@ def run_variant(variant: str) -> None:
     _check_conm2(dyn, variant)
     _check_mac(variant, dyn, stat)
     _check_dofspace(variant, dyn, stat)
+    _check_subdomains(variant, dyn)
 
 
 def main() -> None:

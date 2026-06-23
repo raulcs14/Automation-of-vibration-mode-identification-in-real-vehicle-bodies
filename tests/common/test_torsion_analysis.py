@@ -1,5 +1,5 @@
 """
-Unit tests for the geometric torsion-identification criterion
+[VERIFICATION] Unit tests for the geometric torsion-identification criterion
 (common.torsion_analysis).
 
 The strategy is to build SYNTHETIC modal fields with known physics on a simple

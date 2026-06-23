@@ -1,5 +1,5 @@
 """
-Diagnostic: derive the torsion axis from the geometry via PCA instead of
+[EXPLORATION] Diagnostic: derive the torsion axis from the geometry via PCA instead of
 assuming it is the global X axis.
 
 Why
@@ -24,14 +24,13 @@ Coordinates AND modal displacements are projected onto (e_long, e_lat, e_vert),
 then rigid_rotation_fit is applied about the new longitudinal axis (now "X'")
 through the centre.  Result is compared to the production origin-X fit.
 
-Run:  py tests/SEAT/torsion_identification/explore_pca_axes.py
+Run:  py scripts/torsion/explore_pca_axes.py
 """
 
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 
 from seat_model.reader import read_hdf5_modal

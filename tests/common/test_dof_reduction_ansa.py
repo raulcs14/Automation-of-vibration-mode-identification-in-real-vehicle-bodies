@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Mathematical correctness checks for the ANSA DOF-reduction pipeline.
+[VERIFICATION] Mathematical correctness checks for the ANSA DOF-reduction pipeline.
 
 Run directly:
     py -3 tests/common/test_dof_reduction_ansa.py

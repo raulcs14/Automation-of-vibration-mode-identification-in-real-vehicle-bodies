@@ -1,5 +1,5 @@
 """
-MAC comparison across all variants for the simple model — reference case 4
+[EXPLORATION] MAC comparison across all variants for the simple model — reference case 4
 (Roll/Torsion global).
 
 Computes in one shot:
@@ -15,21 +15,13 @@ Shows:
   2. Summary table printed to console
 
 Run from anywhere:
-    py -3 tests/SEAT/mac/test_mac_comparison_simple.py
+    py -3 scripts/seat/compare_mac_simple.py
 """
 
 import sys
 from pathlib import Path
-# Make the project root importable so this file runs under pytest AND when
-# executed directly (IDE Run button).  Walk up to the repo root (the dir that
-# contains the `common` package) instead of hard-coding a parents[N] depth.
-_p = Path(__file__).resolve()
-for _root in _p.parents:
-    if (_root / "common").is_dir() and (_root / "main.py").is_file():
-        break
-sys.path.insert(0, str(_root))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm

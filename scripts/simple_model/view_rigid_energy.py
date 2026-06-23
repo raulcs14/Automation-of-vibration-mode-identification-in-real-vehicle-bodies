@@ -1,8 +1,8 @@
 """
-Visual test for energy lost after rigid-body component removal.
+[VISUAL] Visual test for energy lost after rigid-body component removal.
 
 Run from anywhere:
-    py -3 tests/test_rigid_body_energy.py
+    py -3 scripts/rigid_body_energy.py
 
 For each vector (dynamic modes + static reference shapes) computes:
 
@@ -16,15 +16,8 @@ Static reference shapes will show non-zero loss (inertia relief introduces rigid
 
 import sys
 from pathlib import Path
-# Make the project root importable so this file runs under pytest AND when
-# executed directly (IDE Run button).  Walk up to the repo root (the dir that
-# contains the `common` package) instead of hard-coding a parents[N] depth.
-_p = Path(__file__).resolve()
-for _root in _p.parents:
-    if (_root / "common").is_dir() and (_root / "main.py").is_file():
-        break
-sys.path.insert(0, str(_root))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 

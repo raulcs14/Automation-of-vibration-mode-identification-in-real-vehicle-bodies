@@ -1,7 +1,7 @@
 """
-Interactive exploration of ShearXY stresses (tau_xy) per mode — TB model.
+[EXPLORATION] Interactive exploration of ShearXY stresses (tau_xy) per mode — TB model.
 
-Run:  py tests/SEAT/torsion_identification/explore_tb_stress.py
+Run:  py scripts/torsion/explore_tb_stress.py
 
 Figures:
   1. 3D scatter with real vehicle proportions (forced aspect ratio)
@@ -12,14 +12,13 @@ Figures:
 
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from seat_model.reader import read_hdf5_element_stress, read_hdf5_modal
-from common.torsion_analysis import torsion_score_v2
+from common.torsion_analysis import torsion_score_v2, pca_body_frame
 from common.interaction import ask_int
 
 # ---------------------------------------------------------------------------
@@ -200,7 +199,17 @@ ux_mode  = modal["modes"][Ux_idx, mode_num - 1]
 uy_mode  = modal["modes"][Uy_idx, mode_num - 1]
 uz_mode  = modal["modes"][Uz_idx, mode_num - 1]
 
-res  = torsion_score_v2(node_xyz, ux_mode, uy_mode, uz_mode, n_slices=N_SLICES)
+# Project into the PCA body frame so theta_x and the scores match what the
+# pipeline (scan_torsion_scores_v2) reports for this mode.  torsion_score_v2 on
+# its own does NOT apply pca_body_frame (only the scan wrapper does), so feeding
+# raw H5 coords would measure rotation about the global origin (~283 mm below the
+# real TB torsion axis in Z).
+_centre, _R, _ = pca_body_frame(node_xyz)
+xyz_body = (node_xyz - _centre) @ _R.T
+_u_body  = np.column_stack([ux_mode, uy_mode, uz_mode]) @ _R.T
+ux_mode, uy_mode, uz_mode = _u_body[:, 0], _u_body[:, 1], _u_body[:, 2]
+
+res  = torsion_score_v2(xyz_body, ux_mode, uy_mode, uz_mode, n_slices=N_SLICES)
 x_c  = res["x_centers"]
 th   = res["theta_means"]
 lin  = res["linearity"]
@@ -221,7 +230,8 @@ if len(x_c) >= 2:
     ax4.plot(x_fit, np.polyval(coeffs, x_fit), "--", color="tomato", lw=1.5,
              label=f"Linear fit (R²·SNR = {lin:.2f})")
     if not np.isnan(x0):
-        X_min, X_max = float(node_xyz[:, 0].min()), float(node_xyz[:, 0].max())
+        # x0 and x_c are body-frame longitudinal coords, so range-check in xyz_body
+        X_min, X_max = float(xyz_body[:, 0].min()), float(xyz_body[:, 0].max())
         if X_min <= x0 <= X_max:
             ax4.axvline(x0, color="tomato", lw=1.0, ls=":", alpha=0.7,
                         label=f"Rotation centre x0={x0:.0f} mm (centering={cen:.2f})")

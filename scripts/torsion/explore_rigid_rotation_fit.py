@@ -1,5 +1,5 @@
 """
-Physical refinement of the torsion antisymmetry score.
+[EXPLORATION] Physical refinement of the torsion antisymmetry score.
 
 Motivation
 ----------
@@ -30,14 +30,13 @@ Variants compared
   rigid_uzuy    : R^2 of the full (Uz,Uy) field vs the rigid-rotation prediction
   rigid_x_lin   : rigid_uzuy folded with how linear theta(X) is (true 1st torsion)
 
-Run:  py tests/SEAT/torsion_identification/explore_rigid_rotation_fit.py
+Run:  py scripts/torsion/explore_rigid_rotation_fit.py
 """
 
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 
 from seat_model.reader import read_hdf5_modal

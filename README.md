@@ -143,6 +143,28 @@ reported as a confidence/coupling axis rather than used as a gate.
 
 ---
 
+## Tests and scripts
+
+The repository separates **automated verification** from **manual observation**:
+
+| Folder | Purpose | How to run |
+|---|---|---|
+| `tests/` | **Verification** — pytest with assertions, no figures, no input. Runs in CI. | `pytest` |
+| `scripts/` | **Observation** — open matplotlib figures and/or ask for input. Run by hand. | `py -3 scripts/<sub>/<name>.py` |
+
+Every file declares its nature in the first docstring line:
+
+- `[VERIFICATION]` — assert-based test (in `tests/`)
+- `[VISUAL]` — opens a figure to look at a result (in `scripts/`)
+- `[EXPLORATION]` — experiments with / compares metrics (in `scripts/`)
+
+Naming inside `scripts/`: `view_*` (look at one result), `compare_*` (compare
+variants), `explore_*` (iterate on a metric).  `pytest` only collects `tests/`,
+so the visual scripts never pollute the suite.  Observation scripts import
+`_bootstrap` (path setup) and, when interactive, `_helpers` (prompt helpers).
+
+---
+
 ## References
 
 - Ferreira, A.J.M. & Fantuzzi, N. (2019). *MATLAB Codes for Finite Element Analysis*. Springer.

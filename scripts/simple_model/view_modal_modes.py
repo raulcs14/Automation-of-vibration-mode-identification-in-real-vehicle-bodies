@@ -1,32 +1,24 @@
 """
-Visual test for run_modal_analysis.
+[VISUAL] Visual view of run_modal_analysis — one elastic mode shape.
 
 Run from anywhere:
-    py -3 tests/test_modal_analysis.py
+    py -3 scripts/simple_model/view_modal_modes.py
 
-Prints the frequency table, asks which mode to inspect individually,
-then shows the full grid of all 30 elastic modes.
+Prints the frequency table, asks which mode to inspect, and shows that single
+deformed mode shape.
 """
 
 import sys
 from pathlib import Path
-# Make project root and tests/ importable so this file runs under pytest
-# AND when executed directly (IDE Run button).  Walk up to the repo root
-# (dir containing the `common` package); _helpers lives in tests/.
-_here = Path(__file__).resolve()
-for _root in _here.parents:
-    if (_root / "common").is_dir() and (_root / "main.py").is_file():
-        break
-sys.path.insert(0, str(_root))
-sys.path.insert(0, str(_root / "tests"))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 from simple_model.analysis.modal_analysis import run_modal_analysis
 from common.visualization.mesh import (
     _draw_mesh_lines, _set_equal_axes, draw_interpolated_frame,
 )
-from _helpers import ask_mode
+from _helpers import require_mode as ask_mode
 
 SCALE = 0.5   # same as MATLAB scaleFact = 0.5
 
@@ -58,20 +50,9 @@ def main():
 
     chosen = ask_mode(n_modes, freq)
 
-    if chosen is not None:
-        fig = plt.figure(figsize=(8, 7))
-        ax  = fig.add_subplot(111, projection="3d")
-        plot_mode(ax, nc, en, modes[:, chosen], freq[chosen], chosen + 1, fontsize=14)
-        fig.tight_layout()
-        plt.show()
-
-    # Full grid — 6 cols × 5 rows = 30 modes
-    cols, rows = 6, 5
-    fig = plt.figure(figsize=(4*cols, 3.5*rows))
-    fig.suptitle("Elastic modes (free-free)", fontsize=13)
-    for k in range(n_modes):
-        ax = fig.add_subplot(rows, cols, k + 1, projection="3d")
-        plot_mode(ax, nc, en, modes[:, k], freq[k], k + 1)
+    fig = plt.figure(figsize=(8, 7))
+    ax  = fig.add_subplot(111, projection="3d")
+    plot_mode(ax, nc, en, modes[:, chosen], freq[chosen], chosen + 1, fontsize=14)
     fig.tight_layout()
     plt.show()
 

@@ -1,5 +1,5 @@
 """
-Visual test for BIW subdomain averaging + MAC with subdomain-averaged references.
+[VISUAL] Visual test for BIW subdomain averaging + MAC with subdomain-averaged references.
 
 Flow:
   1. Ask which elastic mode to inspect.
@@ -8,21 +8,13 @@ Flow:
      reference, and print + plot the result.
 
 Run from anywhere:
-    py -3 tests/SEAT/mac/biw/test_subdomain_vectors_biw.py
+    py -3 scripts/seat/view_subdomain_vectors_biw.py
 """
 
 import sys
 from pathlib import Path
-# Make project root and tests/ importable so this file runs under pytest
-# AND when executed directly (IDE Run button).  Walk up to the repo root
-# (dir containing the `common` package); _helpers lives in tests/.
-_here = Path(__file__).resolve()
-for _root in _here.parents:
-    if (_root / "common").is_dir() and (_root / "main.py").is_file():
-        break
-sys.path.insert(0, str(_root))
-sys.path.insert(0, str(_root / "tests"))
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
+import _bootstrap  # noqa: F401  -- puts repo root (and scripts/) on sys.path
 import numpy as np
 import matplotlib.pyplot as plt
 
